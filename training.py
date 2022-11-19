@@ -23,7 +23,7 @@ def load_config(config_file):
 
 cfg = load_config("config.yaml")
 loader_dict = {
-    "MyDataset": "MyDataset"
+    "MyDataset": dataset.MyDataset
 }
 
 
@@ -283,4 +283,3 @@ def run():
 
 if __name__ == "__main__":
     run()
->>>>>> > 45077560856f5877b425408161fb8f2d0f68044c
