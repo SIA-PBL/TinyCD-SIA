@@ -38,7 +38,7 @@ def parse_arguments():
         help="data path",
     )
     parser.add_argument(
-        "--log-path",
+        "--logpath",
         type=str,
         help="log path",
     )
