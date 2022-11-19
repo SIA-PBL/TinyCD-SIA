@@ -23,7 +23,7 @@ def load_config(config_file):
 
 cfg = load_config("config.yaml")
 loader_dict = {
-    "MyDataset": "MyDataset"
+    "MyDataset": dataset.MyDataset
 }
 
 
@@ -89,6 +89,7 @@ def train(
     save_after,
     device
 ):
+
     model = model.to(device)
 
     tool4metric = ConfuseMatrixMeter(n_class=2)
