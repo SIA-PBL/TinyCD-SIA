@@ -118,7 +118,7 @@ def train(
         tool4metric.clear()
         print("Epoch {}".format(epc))
         model.train()
-        epoch_loss = 0.0
+        epoch_loss = cfg['params']['epoch_loss']
         for (reference, testimg), mask in dataset_train:
             # Reset the gradients:
             optimizer.zero_grad()
