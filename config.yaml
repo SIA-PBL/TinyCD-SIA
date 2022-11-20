@@ -1,5 +1,5 @@
 path:
-  dataloader_path: MyDataset
+  dataloader_path: LEVIRLoader
 params:
   epochs: 100
   epoch_loss: 0.0

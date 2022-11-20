@@ -23,7 +23,7 @@ def load_config(config_file):
 
 cfg = load_config("config.yaml")
 loader_dict = {
-    "MyDataset": dataset.MyDataset
+    "MyLoader": dataset.cfg['data']['dataloader']
 }
 
 
@@ -211,10 +211,8 @@ def run():
     writer = SummaryWriter(log_dir=args.log_path)
 
     # Inizialitazion of dataset and dataloader:
-    trainingdata = loader_dict[cfg["path"]
-                               ["dataloader_path"]](args.datapath, "train")
-    validationdata = loader_dict[cfg["path"]
-                                 ["dataloader_path"]](args.datapath, "val")
+    trainingdata = loader_dict['MyLoader'](args.datapath, "train")
+    validationdata = loader_dict['MyLoader'](args.datapath, "val")
     data_loader_training = DataLoader(
         trainingdata, batch_size=cfg["params"]["batch_size"], shuffle=True)
     data_loader_val = DataLoader(
