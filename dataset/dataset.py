@@ -17,73 +17,58 @@ class MyDataset(Dataset, Sized):
         data_path: str,
         mode: str,
     ) -> None:
-        """
-        data_path: Folder containing the sub-folders:
-            "A" for test images,
-            "B" for ref images, 
-            "label" for the gt masks,
-            "list" containing the image list files ("train.txt", "test.txt", "eval.txt").
-        """
-        # Store the path data path + mode (train,val,test):
+        # Set image and label directory path
         self._mode = mode
-        #self._A = join(data_path, "A")
-        #self._B = join(data_path, "B")
-        #self._label = join(data_path, "label")
-        if mode == 'train':
-            self.dir_path_image = os.path.join(data_path, mode, "images")
-            self.dir_path_label = os.path.join(data_path, mode, "labels")
-        elif mode == 'val' :
-            self.dir_path_image = os.path.join(data_path, mode, "images")
-            self.dir_path_label = os.path.join(data_path, mode, "labels")
-        # In all the dirs, the files share the same names:
-        #self._list_images = self._read_images_list(data_path)
-
-        # Initialize augmentations:
+        self.dir_path_image = os.path.join(data_path, mode, "images")
+        self.dir_path_label = os.path.join(data_path, mode, "labels")
+        # Perform augmentation only when training
         if mode == 'train':
             self._augmentation = _create_shared_augmentation()
             self._aberration = _create_aberration_augmentation()
-        
-        # Initialize normalization:
+        # Normalization
         self._normalize = Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
 
     def __getitem__(self, indx):
-        # Current image set name:
-        #imgname = self._list_images[indx].strip('\n')
         list_images_1 =  []
         list_images_2 = []
         list_labels_1 = []
         list_labels_2 = []
+        # Make image pair and save path in each list1 and list2 (list1 : before, list2 : after)
+        # Set image pair for adjacent period
         for (root, directories, files) in os.walk(self.dir_path_image):
             files.sort()
             length = len(files)
-            for i in range(len(files)-3):
-                if i==0:
-                    list_images_1.append(os.path.join(root, files[i]))
-                elif i==len(files)-4:
-                    list_images_2.append(os.path.join(root, files[i]))
+            for image_file in files:
+                if files.index(image_file) == 0:
+                    list_images_1.append(os.path.join(root, image_file))
+                elif files.index(image_file) == length-4:
+                    list_images_2.append(os.path.join(root, image_file))
                 else:
-                    list_images_1.append(os.path.join(root, files[i]))
-                    list_images_2.append(os.path.join(root, files[i]))
+                    list_images_1.append(os.path.join(root, image_file))
+                    list_images_2.append(os.path.join(root, image_file))
 
-
+        # Make label pair and save path in each list1 and list2 (list1 : before, list2 : after)
+        # Set label pair for adjacent period
         for (root, directories, files) in os.walk(self.dir_path_label):
             files.sort()
-            for i in range(len(files)):
-                if i==0:
-                    list_labels_1.append(os.path.join(root, files[i]))
-                elif i==len(files)-1:
-                    list_labels_2.append(os.path.join(root, files[i]))
+            length = len(files)
+            for label_file in files:
+                if files.index(label_file) == 0:
+                    list_labels_1.append(os.path.join(root, label_file))
+                elif files.index(label_file) == length-4:
+                    list_labels_2.append(os.path.join(root, label_file))
                 else:
-                    list_labels_1.append(os.path.join(root, files[i]))
-                    list_labels_2.append(os.path.join(root, files[i]))
+                    list_labels_1.append(os.path.join(root, label_file))
+                    list_labels_2.append(os.path.join(root, label_file))
              
         # Loading the images:
-        x_ref = cv2.imread(list_labels_1[indx])
-        x_test = cv2.imread(list_labels_2[indx])
+        x_ref = cv2.imread(list_images_1[indx])
+        x_test = cv2.imread(list_images_2[indx])
         x_mask_ref = _binarize(cv2.imread(list_labels_1[indx], cv2.IMREAD_GRAYSCALE))
         x_mask_test = _binarize(cv2.imread(list_labels_2[indx], cv2.IMREAD_GRAYSCALE))
-
+        
+        # Resize the size to 256*256*3 and 256*256 which is the fixed input size of TinyCD
         x_ref = np.resize(x_ref, (256, 256, 3))
         x_test = np.resize(x_test, (256, 256, 3))
         x_mask_ref = np.resize(x_mask_ref, (256, 256))
@@ -93,25 +78,24 @@ class MyDataset(Dataset, Sized):
         if self._mode == "train":
             x_ref, x_test, x_mask_ref, x_mask_test = self._augment(x_ref, x_test, x_mask_ref, x_mask_test)
         
+        # Change mask generation
         x_mask = np.logical_xor(x_mask_ref, x_mask_test)
         
-        x_ref = x_ref.astype(np.float)
-        x_test = x_test.astype(np.float)
-        x_mask = x_mask.astype(np.float)
+        # Change datatype from bool to float
+        x_ref, x_test, x_mask = x_ref.astype(np.float), x_test.astype(np.float), x_mask.astype(np.float)
 
         # Trasform data from HWC to CWH:
         x_ref, x_test, x_mask = self._to_tensors(x_ref, x_test, x_mask)
 
         return (x_ref, x_test), x_mask
 
-    def _num(self):
-        num = 1
-        for (root, directories, files) in os.walk(self.dir_path_label):
-            num += (len(files) -1)
-        return num
-
+    # Total number of image and label pair
     def __len__(self):
-        return self._num()
+        num = 0
+        for (root, directories, files) in os.walk(self.dir_path_label):
+            if len(files) != 0:
+                num += (len(files) -1)
+        return num
     
     def _augment(
         self, x_ref: np.ndarray, x_test: np.ndarray, x_mask_ref: np.ndarray, x_mask_test: np.ndarray
