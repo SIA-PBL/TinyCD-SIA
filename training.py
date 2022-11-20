@@ -23,7 +23,7 @@ def load_config(config_file):
 
 cfg = load_config("config.yaml")
 loader_dict = {
-    "MyLoader": cfg['data']['dataloader']
+    "MyLoader": cfg['path']['dataloader']
 }
 
 
