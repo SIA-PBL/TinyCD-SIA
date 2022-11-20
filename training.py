@@ -38,13 +38,13 @@ def parse_arguments():
         "--datapath",
         type=str,
         help="data path",
-        default=cfg['path']['datapath']
+        default=cfg['paths']['datapath']
     )
     parser.add_argument(
         "--logpath",
         type=str,
         help="log path",
-        default=cfg['path']['logpath']
+        default=cfg['paths']['logpath']
     )
 
     group_gpus = parser.add_mutually_exclusive_group()
