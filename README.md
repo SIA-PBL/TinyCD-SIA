@@ -88,7 +88,7 @@ python test_ondata.py --datapath "Your_data_path" --modelpath "Your_path_to_pret
 You can re-train our model, or if you prefer you can play with the parameters of our model and then train it using 
 
 ```cmd
-python training.py --datapath "Your_data_path" --log-path "Path_to_save_logs_and_models_checkpoints"
+python training.py --datapath "Your_data_path" --logpath "Path_to_save_logs_and_models_checkpoints"
 ```
 
 ## References
