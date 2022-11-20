@@ -54,13 +54,13 @@ def parse_arguments():
     parsed_arguments = parser.parse_args()
 
     # create log dir if it doesn't exists
-    if not os.path.exists(parsed_arguments.log_path):
-        os.mkdir(parsed_arguments.log_path)
+    if not os.path.exists(parsed_arguments.logpath):
+        os.mkdir(parsed_arguments.logpath)
 
     dir_run = sorted(
         [
             filename
-            for filename in os.listdir(parsed_arguments.log_path)
+            for filename in os.listdir(parsed_arguments.logpath)
             if filename.startswith("run_")
         ]
     )
@@ -69,8 +69,8 @@ def parse_arguments():
         num_run = int(dir_run[-1].split("_")[-1]) + 1
     else:
         num_run = 0
-    parsed_arguments.log_path = os.path.join(
-        parsed_arguments.log_path, "run_%04d" % num_run + "/"
+    parsed_arguments.logpath = os.path.join(
+        parsed_arguments.logpath, "run_%04d" % num_run + "/"
     )
 
     return parsed_arguments
@@ -208,7 +208,7 @@ def run():
     args = parse_arguments()
 
     # Initialize tensorboard:
-    writer = SummaryWriter(log_dir=args.log_path)
+    writer = SummaryWriter(log_dir=args.logpath)
 
     # Inizialitazion of dataset and dataloader:
     trainingdata = loader_dict['MyLoader'](args.datapath, "train")
@@ -260,7 +260,7 @@ def run():
     # copy the configurations
     _ = shutil.copytree(
         "./models",
-        os.path.join(args.log_path, "models"),
+        os.path.join(args.logpath, "models"),
     )
 
     train(
@@ -270,7 +270,7 @@ def run():
         criterion,
         optimizer,
         scheduler,
-        args.log_path,
+        args.logpath,
         writer,
         epochs=cfg["params"]["epochs"],
         save_after=1,
