@@ -129,10 +129,10 @@ class SPN7Loader(Dataset, Sized):
             for image_file in files:
                 if files.index(image_file) == 0:
                     list_images_1.append(os.path.join(root, image_file))
-                elif files.index(image_file) == length-4:
-                    list_images_2.append(os.path.join(root, image_file))
-                else:
+                elif files.index(image_file) > 0 and files.index(image_file) < length-4:
                     list_images_1.append(os.path.join(root, image_file))
+                    list_images_2.append(os.path.join(root, image_file))
+                elif files.index(image_file) == length-4:
                     list_images_2.append(os.path.join(root, image_file))
 
         # Make label pair and save path in each list1 and list2 (list1 : before, list2 : after)
@@ -143,11 +143,12 @@ class SPN7Loader(Dataset, Sized):
             for label_file in files:
                 if files.index(label_file) == 0:
                     list_labels_1.append(os.path.join(root, label_file))
-                elif files.index(label_file) == length-4:
-                    list_labels_2.append(os.path.join(root, label_file))
-                else:
+                elif files.index(image_file) > 0 and files.index(image_file) < length-1:
                     list_labels_1.append(os.path.join(root, label_file))
                     list_labels_2.append(os.path.join(root, label_file))
+                elif files.index(label_file) == length-1:
+                    list_labels_2.append(os.path.join(root, label_file))
+                    
 
         # Loading the images:
         x_ref = cv2.imread(list_images_1[indx])
