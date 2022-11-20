@@ -5,6 +5,7 @@ import shutil
 import yaml
 
 import dataset
+from tqdm import tqdm
 import torch
 import numpy as np
 import random
@@ -37,11 +38,13 @@ def parse_arguments():
         "--datapath",
         type=str,
         help="data path",
+        default=cfg['path']['datapath']
     )
     parser.add_argument(
         "--logpath",
         type=str,
         help="log path",
+        default=cfg['path']['logpath']
     )
 
     group_gpus = parser.add_mutually_exclusive_group()
@@ -120,7 +123,7 @@ def train(
         print("Epoch {}".format(epc))
         model.train()
         epoch_loss = cfg['params']['epoch_loss']
-        for (reference, testimg), mask in dataset_train:
+        for (reference, testimg), mask in tqdm(dataset_train):
             # Reset the gradients:
             optimizer.zero_grad()
 
@@ -199,11 +202,11 @@ def train(
 
 
 def run():
-
-    # set the random seed
-    torch.manual_seed(42)
-    random.seed(42)
-    np.random.seed(42)
+    if cfg['settings']['set_seed'] == True:
+        # set the random seed
+        torch.manual_seed(42)
+        random.seed(42)
+        np.random.seed(42)
 
     # Parse arguments:
     args = parse_arguments()
@@ -246,13 +249,18 @@ def run():
     criterion = torch.nn.BCELoss()
 
     # choose the optimizer in view of the used dataset
-    # Optimizer with tuned parameters for LEVIR-CD
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.00356799066427741,
-                                  weight_decay=0.009449677083344786, amsgrad=False)
+    # if cfg['params']['dataset'] == 'LEVIR-CD':
+    #     # Optimizer with tuned parameters for LEVIR-CD
+    #     optimizer = torch.optim.AdamW(model.parameters(), lr=0.00356799066427741,
+    #                                   weight_decay=0.009449677083344786, amsgrad=False)
+    # elif cfg['params']['dataset'] == 'WHU-CD':
+    #     # Optimizer with tuned parameters for WHU-CD
+    #     optimizer = torch.optim.AdamW(model.parameters(), lr=0.002596776436816101,
+    #                                   weight_decay=0.008620171028843307, amsgrad=False)
 
-    # Optimizer with tuned parameters for WHU-CD
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=0.002596776436816101,
-    #                                 weight_decay=0.008620171028843307, amsgrad=False)
+    # generalize
+    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['params']['lr'],
+                                  weight_decay=cfg['params']['weight_decay'], amsgrad=False)
 
     # scheduler for the lr of the optimizer
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(

@@ -1,4 +1,11 @@
+paths:
+  datapath: dataset/LEVIR-CD-256
+  logpath: dataset/results/LEVIR-CD
 params:
   epochs: 100
   epoch_loss: 0.0
   batch_size: 8
+  lr: 5e-4
+  weight_decay: 0.01
+settings:
+  set_seed: True
