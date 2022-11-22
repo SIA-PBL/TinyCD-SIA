@@ -4,6 +4,7 @@ import shutil
 
 import yaml
 
+import matplotlib.pyplot as plt
 import dataset
 from tqdm import tqdm
 import torch
@@ -98,6 +99,9 @@ def train(
 
     tool4metric = ConfuseMatrixMeter(n_class=2)
 
+    training_loss_list = []
+    validation_loss_list = []
+
     def evaluate(reference, testimg, mask):
         # All the tensors on the device:
         reference = reference.to(device).float()
@@ -139,6 +143,8 @@ def train(
         epoch_loss /= len(dataset_train)
 
         #########
+        training_loss_list.append(epoch_loss)
+
         print("Training phase summary")
         print("Loss for epoch {} is {}".format(epc, epoch_loss))
         writer.add_scalar("Loss/epoch", epoch_loss, epc)
@@ -175,6 +181,9 @@ def train(
                                             testimg, mask).to("cpu").numpy()
 
         epoch_loss_eval /= len(dataset_val)
+
+        validation_loss_list.append(epoch_loss_eval)
+
         print("Validation phase summary")
         print("Loss for epoch {} is {}".format(epc, epoch_loss_eval))
         writer.add_scalar("Loss_val/epoch", epoch_loss_eval, epc)
@@ -199,6 +208,10 @@ def train(
         validation_phase(epc)
         # scheduler step
         scheduler.step()
+    
+    plt.plot(epochs, epoch_loss, color = "red")
+    plt.plot(epochs, epoch_loss_eval, color = "blue")
+    plt.savefig('dataset/results/loss/loss_graph.png')
 
 
 def run():
