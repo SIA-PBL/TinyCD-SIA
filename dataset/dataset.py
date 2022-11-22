@@ -12,6 +12,19 @@ import cv2
 from torch.utils.data import Dataset
 from torch import Tensor
 
+import yaml
+import errno
+
+
+def load_config(config_file):
+    with open(config_file) as file:
+        config = yaml.safe_load(file)
+
+    return config
+
+
+cfg = load_config("../config.yaml")
+
 
 class LEVIRLoader(Dataset, Sized):
     # LEVIR dataloader
@@ -104,51 +117,58 @@ class SPN7Loader(Dataset, Sized):
         data_path: str,
         mode: str,
     ) -> None:
+
         # Set image and label directory path
         self._mode = mode
         self.dir_path_image = os.path.join(data_path, mode, "images")
         self.dir_path_label = os.path.join(data_path, mode, "labels")
+
         # Perform augmentation only when training
+
         if mode == 'train':
             self._augmentation = _create_shared_augmentation()
             self._aberration = _create_aberration_augmentation()
+
+        ##############################TO-DO##################################
         # Normalization
         self._normalize = Normalize(mean=[0.485, 0.456, 0.406],
                                     std=[0.229, 0.224, 0.225])
+        #####################################################################
 
     def __getitem__(self, indx):
         list_images_1 = []
         list_images_2 = []
         list_labels_1 = []
         list_labels_2 = []
+
+        ######################REFACTORED#######################################
         # Make image pair and save path in each list1 and list2 (list1 : before, list2 : after)
         # Set image pair for adjacent period
         for (root, directories, files) in os.walk(self.dir_path_image):
             files.sort()
             length = len(files)
-            for image_file in files:
-                if files.index(image_file) == 0:
-                    list_images_1.append(os.path.join(root, image_file))
-                elif files.index(image_file) > 0 and files.index(image_file) < length-4:
-                    list_images_1.append(os.path.join(root, image_file))
-                    list_images_2.append(os.path.join(root, image_file))
-                elif files.index(image_file) == length-4:
-                    list_images_2.append(os.path.join(root, image_file))
+            list_images = []
 
+            for image_file in files:
+                list_images.append(join(root, image_file))
+            list_images_1.extend(
+                list_images[:length-(int(cfg['params']['time_interval'])+3)])
+            list_images_2.extend(
+                list_images[int(cfg['params']['time_interval']):length-(int(cfg['params']['time_interval'])+2)])
         # Make label pair and save path in each list1 and list2 (list1 : before, list2 : after)
         # Set label pair for adjacent period
         for (root, directories, files) in os.walk(self.dir_path_label):
             files.sort()
             length = len(files)
+            list_labels = []
+
             for label_file in files:
-                if files.index(label_file) == 0:
-                    list_labels_1.append(os.path.join(root, label_file))
-                elif files.index(image_file) > 0 and files.index(image_file) < length-1:
-                    list_labels_1.append(os.path.join(root, label_file))
-                    list_labels_2.append(os.path.join(root, label_file))
-                elif files.index(label_file) == length-1:
-                    list_labels_2.append(os.path.join(root, label_file))
-                    
+                list_labels.append(join(root, label_file))
+            list_labels_1.extend(
+                list_labels[:length-int(cfg['params']['time_interval'])])
+            list_labels_2.extend(
+                list_labels[int(cfg['params']['time_interval']):])
+        #####################################################################
 
         # Loading the images:
         x_ref = cv2.imread(list_images_1[indx])
@@ -164,13 +184,25 @@ class SPN7Loader(Dataset, Sized):
         x_mask_ref = np.resize(x_mask_ref, (256, 256))
         x_mask_test = np.resize(x_mask_test, (256, 256))
 
-        # Data augmentation in case of training:
-        if self._mode == "train":
-            x_ref, x_test, x_mask_ref, x_mask_test = self._augment(
-                x_ref, x_test, x_mask_ref, x_mask_test)
-
         # Change mask generation
         x_mask = np.logical_xor(x_mask_ref, x_mask_test)
+        del x_mask_ref
+        del x_mask_test
+
+        # Data augmentation in case of training:
+        if self._mode == "train":
+            x_ref, x_test, x_mask = self._augment(
+                x_ref, x_test, x_mask)
+
+        # # Data augmentation in case of training:
+        # if self._mode == "train":
+        #     x_ref, x_test, x_mask_ref, x_mask_test = self._augment(
+        #         x_ref, x_test, x_mask_ref, x_mask_test)
+
+        # # Change mask generation
+        # x_mask = np.logical_xor(x_mask_ref, x_mask_test)
+        # del x_mask_ref
+        # del x_mask_test
 
         # Change datatype from bool to float
         x_ref, x_test, x_mask = x_ref.astype(np.float), x_test.astype(
@@ -187,6 +219,10 @@ class SPN7Loader(Dataset, Sized):
         for (root, directories, files) in os.walk(self.dir_path_label):
             if len(files) != 0:
                 num += (len(files) - 1)
+            else:
+                raise FileNotFoundError(
+                    errno.ENOENT, os.strerror(errno.ENOENT), directories)
+
         return num
 
     def _augment(
@@ -194,17 +230,19 @@ class SPN7Loader(Dataset, Sized):
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         # First apply augmentations in equal manner to test/ref/x_mask:
         transformed = self._augmentation(
-            image=x_ref, image0=x_test, x_mask0=x_mask_ref, x_mask1=x_mask_test)
+            image=x_ref, image0=x_test, x_mask=x_mask)  # x_mask0=x_mask_ref, x_mask1=x_mask_test)
         x_ref = transformed["image"]
         x_test = transformed["image0"]
-        x_mask_ref = transformed["x_mask0"]
-        x_mask_test = transformed["x_mask1"]
+        x_mask = transformed["x_mask"]
+
+        # x_mask_ref = transformed["x_mask0"]
+        # x_mask_test = transformed["x_mask1"]
 
         # Then apply augmentation to single test ref in different way:
         x_ref = self._aberration(image=x_ref)["image"]
         x_test = self._aberration(image=x_test)["image"]
 
-        return x_ref, x_test, x_mask_ref, x_mask_test
+        return x_ref, x_test, x_mask  # x_mask_ref, x_mask_test
 
     def _to_tensors(
         self, x_ref: np.ndarray, x_test: np.ndarray, x_mask: np.ndarray

@@ -7,5 +7,6 @@ params:
   batch_size: 8
   lr: 0.0005
   weight_decay: 0.01
+  time_interval: 1
 settings:
   set_seed: True
