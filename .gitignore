@@ -132,3 +132,5 @@ dmypy.json
 dataset/LEVIR-CD-256
 dataset/WHU-CD-256
 
+# results
+dataset/results/*
