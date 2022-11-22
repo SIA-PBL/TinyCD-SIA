@@ -211,7 +211,7 @@ def train(
     
     plt.plot(epochs, epoch_loss, color = "red")
     plt.plot(epochs, epoch_loss_eval, color = "blue")
-    plt.savefig('result.png')
+    plt.savefig('dataset/results/loss/loss_graph.png')
 
 
 def run():
