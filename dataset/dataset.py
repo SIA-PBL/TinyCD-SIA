@@ -12,6 +12,18 @@ import cv2
 from torch.utils.data import Dataset
 from torch import Tensor
 
+import yaml
+
+
+def load_config(config_file):
+    with open(config_file) as file:
+        config = yaml.safe_load(file)
+
+    return config
+
+
+cfg = load_config("../config.yaml")
+
 
 class LEVIRLoader(Dataset, Sized):
     # LEVIR dataloader
@@ -104,36 +116,43 @@ class SPN7Loader(Dataset, Sized):
         data_path: str,
         mode: str,
     ) -> None:
+
         # Set image and label directory path
         self._mode = mode
         self.dir_path_image = os.path.join(data_path, mode, "images")
         self.dir_path_label = os.path.join(data_path, mode, "labels")
+
         # Perform augmentation only when training
+
         if mode == 'train':
             self._augmentation = _create_shared_augmentation()
             self._aberration = _create_aberration_augmentation()
+
+        ##############################TO-DO##################################
         # Normalization
         self._normalize = Normalize(mean=[0.485, 0.456, 0.406],
                                     std=[0.229, 0.224, 0.225])
+        #####################################################################
 
     def __getitem__(self, indx):
         list_images_1 = []
         list_images_2 = []
         list_labels_1 = []
         list_labels_2 = []
+
+        ######################REFACTORED#######################################
         # Make image pair and save path in each list1 and list2 (list1 : before, list2 : after)
         # Set image pair for adjacent period
         for (root, directories, files) in os.walk(self.dir_path_image):
             files.sort()
             length = len(files)
             for image_file in files:
-                if files.index(image_file) == 0:
-                    list_images_1.append(os.path.join(root, image_file))
-                elif files.index(image_file) > 0 and files.index(image_file) < length-4:
-                    list_images_1.append(os.path.join(root, image_file))
-                    list_images_2.append(os.path.join(root, image_file))
-                elif files.index(image_file) == length-4:
-                    list_images_2.append(os.path.join(root, image_file))
+                list_images = []
+                list_images.append(os.path.join(root, image_file))
+                list_images_1.extend(
+                    list_images[:length-(int(cfg['params']['time_interval'])+3)])
+                list_images_2.extend(
+                    list_images[int(cfg['params']['time_interval']):length-(int(cfg['params']['time_interval'])+2)])
 
         # Make label pair and save path in each list1 and list2 (list1 : before, list2 : after)
         # Set label pair for adjacent period
@@ -141,14 +160,13 @@ class SPN7Loader(Dataset, Sized):
             files.sort()
             length = len(files)
             for label_file in files:
-                if files.index(label_file) == 0:
-                    list_labels_1.append(os.path.join(root, label_file))
-                elif files.index(image_file) > 0 and files.index(image_file) < length-1:
-                    list_labels_1.append(os.path.join(root, label_file))
-                    list_labels_2.append(os.path.join(root, label_file))
-                elif files.index(label_file) == length-1:
-                    list_labels_2.append(os.path.join(root, label_file))
-                    
+                list_labels = []
+                list_labels.append(os.path.join(root, label_file))
+                list_labels_1.extend(
+                    list_labels[:length-int(cfg['params']['time_interval'])])
+                list_labels_2.extend(
+                    list_labels[int(cfg['params']['time_interval']):])
+        #####################################################################
 
         # Loading the images:
         x_ref = cv2.imread(list_images_1[indx])
