@@ -92,7 +92,8 @@ def train(
     writer,
     epochs,
     save_after,
-    device
+    device,
+    patience_limit
 ):
 
     model = model.to(device)
@@ -101,6 +102,8 @@ def train(
 
     training_loss_list = []
     validation_loss_list = []
+    epcs = []
+    patience = 0
 
     def evaluate(reference, testimg, mask):
         # All the tensors on the device:
@@ -143,6 +146,7 @@ def train(
         epoch_loss /= len(dataset_train)
 
         #########
+        epcs.append(epc)
         training_loss_list.append(epoch_loss)
 
         print("Training phase summary")
@@ -203,14 +207,29 @@ def train(
         )
         print()
 
+    def early_stop(epc):
+        nonlocal patience
+        if validation_loss_list[epc] > min(validation_loss_list):
+            patience += 1
+            if patience >= patience_limit:
+                return True
+            else:
+                patience = 0
+
     for epc in range(epochs):
         training_phase(epc)
         validation_phase(epc)
+        if early_stop(epc):
+            break
         # scheduler step
         scheduler.step()
+        
+
     
-    plt.plot(epochs, epoch_loss, color = "red")
-    plt.plot(epochs, epoch_loss_eval, color = "blue")
+    plt.plot(epcs, training_loss_list, color = "red", label='Training loss')
+    plt.plot(epcs, validation_loss_list, color = "blue", label='Evaluation loss')
+    plt.xlabel('Loss')
+    plt.ylabel('Epoch')
     plt.savefig('dataset/results/loss/loss_graph.png')
 
 
@@ -296,7 +315,8 @@ def run():
         writer,
         epochs=cfg["params"]["epochs"],
         save_after=1,
-        device=device
+        device=device,
+        patience_limit = cfg["params"]["patience_limit"]
     )
     writer.close()
 
