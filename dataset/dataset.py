@@ -23,7 +23,7 @@ def load_config(config_file):
     return config
 
 
-cfg = load_config("../config.yaml")
+cfg = load_config("./config.yaml")
 
 
 class LEVIRLoader(Dataset, Sized):

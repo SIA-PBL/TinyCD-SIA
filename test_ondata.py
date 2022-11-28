@@ -1,5 +1,6 @@
 import torch
-from dataset.dataset import MyDataset
+import matplotlib.pyplot as plt
+from dataset.dataset import LEVIRLoader
 import tqdm
 from torch.utils.data import DataLoader
 from metrics.metric_tool import ConfuseMatrixMeter
@@ -37,7 +38,7 @@ if __name__ == "__main__":
 
     # Initialisation of the dataset
     data_path = args.datapath 
-    dataset = MyDataset(data_path, "test")
+    dataset = LEVIRLoader(data_path, "test")
     test_loader = DataLoader(dataset, batch_size=1)
 
     # Initialisation of the model and print model stat
@@ -64,6 +65,7 @@ if __name__ == "__main__":
     criterion = torch.nn.BCELoss()
 
     with torch.no_grad():
+        i = 0
         for (reference, testimg), mask in tqdm.tqdm(test_loader):
             reference = reference.to(device).float()
             testimg = testimg.to(device).float()
@@ -76,13 +78,14 @@ if __name__ == "__main__":
             generated_mask = generated_mask.to("cpu")
             bce_loss += criterion(generated_mask, mask)
 
+            plt.imsave("./images/results/{}.png".format(i),generated_mask[0])
             ### Update the metric tool
             bin_genmask = (generated_mask > 0.5).numpy()
             bin_genmask = bin_genmask.astype(int)
             mask = mask.numpy()
             mask = mask.astype(int)
             tool_metric.update_cm(pr=bin_genmask, gt=mask)
-
+            i += 1
         bce_loss /= len(test_loader)
         print("Test summary")
         print("Loss is {}".format(bce_loss))
