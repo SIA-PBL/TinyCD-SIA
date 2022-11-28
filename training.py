@@ -14,6 +14,7 @@ from metrics.metric_tool import ConfuseMatrixMeter
 from models.change_classifier import ChangeClassifier as Model
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from utils.pytorchtools import EarlyStopping
 
 
 def load_config(config_file):
@@ -92,7 +93,8 @@ def train(
     writer,
     epochs,
     save_after,
-    device
+    device,
+    patience_limit
 ):
 
     model = model.to(device)
@@ -101,6 +103,9 @@ def train(
 
     training_loss_list = []
     validation_loss_list = []
+    epcs = []
+
+    early_stopping = EarlyStopping(patience=patience_limit, verbose=True)
 
     def evaluate(reference, testimg, mask):
         # All the tensors on the device:
@@ -143,6 +148,7 @@ def train(
         epoch_loss /= len(dataset_train)
 
         #########
+        epcs.append(epc)
         training_loss_list.append(epoch_loss)
 
         print("Training phase summary")
@@ -206,11 +212,19 @@ def train(
     for epc in range(epochs):
         training_phase(epc)
         validation_phase(epc)
+        early_stopping(validation_loss_list[-1], model)
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
         # scheduler step
         scheduler.step()
+        
+
     
-    plt.plot(epochs, epoch_loss, color = "red")
-    plt.plot(epochs, epoch_loss_eval, color = "blue")
+    plt.plot(list(map(int, epcs)), training_loss_list, color = "red", label='Training loss')
+    plt.plot(list(map(int, epcs)), validation_loss_list, color = "blue", label='Evaluation loss')
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
     plt.savefig('dataset/results/loss/loss_graph.png')
 
 
@@ -296,7 +310,8 @@ def run():
         writer,
         epochs=cfg["params"]["epochs"],
         save_after=1,
-        device=device
+        device=device,
+        patience_limit = cfg["params"]["patience_limit"]
     )
     writer.close()
 
