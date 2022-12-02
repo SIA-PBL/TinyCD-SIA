@@ -21,7 +21,8 @@ class ChangeClassifier(Module):
         )
 
         # Initialize mixing blocks:
-        self._first_mix = MixingMaskAttentionBlock(6, 3, [3, 10, 5], [10, 5, 1])
+        self._first_mix = MixingMaskAttentionBlock(
+            6, 3, [3, 10, 5], [10, 5, 1])
         self._mixing_mask = ModuleList(
             [
                 MixingMaskAttentionBlock(48, 24, [24, 12, 6], [12, 6, 1]),

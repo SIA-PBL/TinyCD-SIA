@@ -218,11 +218,11 @@ def train(
             break
         # scheduler step
         scheduler.step()
-        
 
-    
-    plt.plot(list(map(int, epcs)), training_loss_list, color = "red", label='Training loss')
-    plt.plot(list(map(int, epcs)), validation_loss_list, color = "blue", label='Evaluation loss')
+    plt.plot(list(map(int, epcs)), training_loss_list,
+             color="red", label='Training loss')
+    plt.plot(list(map(int, epcs)), validation_loss_list,
+             color="blue", label='Evaluation loss')
     plt.ylabel('Loss')
     plt.xlabel('Epoch')
     plt.savefig('dataset/results/loss/loss_graph.png')
@@ -311,7 +311,7 @@ def run():
         epochs=cfg["params"]["epochs"],
         save_after=1,
         device=device,
-        patience_limit = cfg["params"]["patience_limit"]
+        patience_limit=cfg["params"]["patience_limit"]
     )
     writer.close()
 

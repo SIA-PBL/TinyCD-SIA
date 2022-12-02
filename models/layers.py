@@ -40,8 +40,6 @@ class PixelwiseLinear(Module):
         return self._linears(x)
 
 
-
-
 class MixingBlock(Module):
     def __init__(
         self,
@@ -78,8 +76,10 @@ class MixingMaskAttentionBlock(Module):
         super().__init__()
         self._mixing = MixingBlock(ch_in, ch_out)
         self._linear = PixelwiseLinear(fin, fout)
-        self._final_normalization = InstanceNorm2d(ch_out) if generate_masked else None
-        self._mixing_out = MixingBlock(ch_in, ch_out) if generate_masked else None
+        self._final_normalization = InstanceNorm2d(
+            ch_out) if generate_masked else None
+        self._mixing_out = MixingBlock(
+            ch_in, ch_out) if generate_masked else None
 
     def forward(self, x: Tensor, y: Tensor) -> Tensor:
         z_mix = self._mixing(x, y)
