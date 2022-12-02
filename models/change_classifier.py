@@ -66,7 +66,7 @@ class ChangeClassifier(Module):
         feat_mixed = [self._first_mix(ref, test)]
         feat_refs = []
         feat_tests = []
-        for num, layer in enumerate(self._backbone):
+        for layer in self._backbone:
             ref, test = layer(ref), layer(test)
             feat_refs.append(ref)
             feat_tests.append(test)
