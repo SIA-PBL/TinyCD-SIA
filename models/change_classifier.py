@@ -1,6 +1,6 @@
 from typing import List
 import torchvision
-from models.layers import MixingMaskAttentionBlock, PixelwiseLinear, UpMask, MixingBlock, SegFormer
+from models.layers import MixingMaskAttentionBlock, PixelwiseLinear, UpMask, MixingBlock, SegFormerBranch
 from torch import Tensor
 from torch.nn import Module, ModuleList, Sigmoid
 
@@ -51,6 +51,7 @@ class ChangeClassifier(Module):
         latents = self._decode(feat_mixed)
         auxiliary_ref = self._segment(feat_refs)
         auxiliary_test = self._segment(feat_tests)
+        print(auxiliary_ref)
         return self._classify(latents)
 
     def _encode(self, ref, test) -> List[Tensor]:
@@ -77,17 +78,16 @@ class ChangeClassifier(Module):
             upping = self._up[i](upping, features[j])
         return upping
 
-####################TO-DO########################
+# TODO
 '''
 각 레이어별로 추출된 enc_ref와 enc_test의 리스트인 feat_refs와 feat_tests를 입력 받아
 concat 후 SegFormer의 decoder를 통과시켜 Segmentation을 구하는 함수
-def _segment(self, features: List[Tensor]) -> Tensor:
-    # pseudo-code
-    feature_concat = concat_tensor(features)
-    sem_seg = SegFormer(feature_concat) -> class SegFormer
-    return sem_seg
 '''
-#################################################
+
+def _segment(self, out_channels: int, features: List[Tensor]) -> Tensor:
+    segformer = SegFormerBranch(out_channels=out_channels)
+    sem_seg = segformer(features)
+    return sem_seg
 
 def _get_backbone(
     bkbn_name, pretrained, output_layer_bkbn, freeze_backbone
