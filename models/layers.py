@@ -10,7 +10,19 @@ from torch.nn import (
     Sequential,
     Upsample,
 )
+############TO-DO############################
+class SegFormer(Module):
+    def __init__(
+        self, 
+        fin: List[int], 
+        fout: List[int], 
+        last_activation: Module = None,
+        )-> None:
+        pass
 
+    def forward(self, x: Tensor) -> Tensor:
+        pass
+#############################################
 
 class PixelwiseLinear(Module):
     def __init__(
