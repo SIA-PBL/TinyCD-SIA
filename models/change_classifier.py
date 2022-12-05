@@ -66,10 +66,11 @@ class ChangeClassifier(Module):
         feat_mixed = [self._first_mix(ref, test)]
         feat_refs = []
         feat_tests = []
-        for layer in self._backbone:
-            ref, test = layer(ref), layer(test)
-            feat_refs.append(ref)
-            feat_tests.append(test)
+        for num, layer in enumerate(self._backbone):
+            if num != 0: # ignore raw image tensor
+                ref, test = layer(ref), layer(test)
+                feat_refs.append(ref)
+                feat_tests.append(test)
         return feat_refs, feat_tests, feat_mixed
 
     def _decode(self, features) -> Tensor:
@@ -84,8 +85,8 @@ class ChangeClassifier(Module):
 concat 후 SegFormer의 decoder를 통과시켜 Segmentation을 구하는 함수
 '''
 
-def _segment(self, out_channels: int, features: List[Tensor]) -> Tensor:
-    segformer = SegFormerBranch(out_channels=out_channels)
+def _segment(self, width, out_channels: int, scale_factor: int, features: List[Tensor]) -> Tensor:
+    segformer = SegFormerBranch(width=width, decoder_channels=out_channels, scale_factors=scale_factor)
     sem_seg = segformer(features)
     return sem_seg
 
