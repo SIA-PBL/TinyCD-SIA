@@ -49,8 +49,8 @@ class SegFormerSegmentationHead(Module):
         super().__init__()
         self.fuse = Sequential(
             Conv2d(channels * num_features, channels, kernel_size=1, bias=False),
-            ReLU(),
-            BatchNorm2d(channels)
+            BatchNorm2d(channels),
+            ReLU()
         )
         self.predict = Conv2d(channels, num_classes, kernel_size=1)
 
