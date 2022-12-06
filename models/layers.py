@@ -117,8 +117,8 @@ class MixingBlock(Module):
         super().__init__()
         self._convmix = Sequential(
             Conv2d(ch_in, ch_out, 3, groups=ch_out, padding=1),
-            PReLU(),
             InstanceNorm2d(ch_out),
+            PReLU()
         )
 
     def forward(self, x: Tensor, y: Tensor) -> Tensor:
