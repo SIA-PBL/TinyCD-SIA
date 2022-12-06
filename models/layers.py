@@ -174,11 +174,11 @@ class UpMask(Module):
         )
         self._convolution = Sequential(
             Conv2d(nin, nin, 3, 1, groups=nin, padding=1),
-            PReLU(),
             InstanceNorm2d(nin),
-            Conv2d(nin, nout, kernel_size=1, stride=1),
             PReLU(),
+            Conv2d(nin, nout, kernel_size=1, stride=1),
             InstanceNorm2d(nout),
+            PReLU()
         )
 
     def forward(self, x: Tensor, y: Optional[Tensor] = None) -> Tensor:
