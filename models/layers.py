@@ -1,16 +1,84 @@
 from typing import List, Optional
 
+import torch
 from torch import Tensor, reshape, stack
-
 from torch.nn import (
     Conv2d,
     InstanceNorm2d,
     Module,
+    ModuleList,
     PReLU,
     Sequential,
     Upsample,
+    UpsamplingBilinear2d,
+    ReLU,
+    BatchNorm2d
 )
+############TODO############################
+class SegFormerDecoderBlock(Sequential):
+    def __init__(
+        self, 
+        fin: List[int], 
+        fout: List[int],
+        scale_factor: int = 2
+        )-> None:
+        super().__init__(
+            UpsamplingBilinear2d(scale_factor=scale_factor),
+            Conv2d(fin, fout, kernel_size=1),
+        )
 
+class SegFormerDecoder(Module):
+    def __init__(self, out_channels: int, widths: List[int], scale_factors: List[int]):
+        super().__init__()
+        self.stages = ModuleList(
+            [
+                SegFormerDecoderBlock(in_channels, out_channels, scale_factor)
+                for in_channels, scale_factor in zip(widths, scale_factors)
+            ]
+        )
+    
+    def forward(self, features):
+        new_features = []
+        for feature, stage in zip(features,self.stages):
+            x = stage(feature)
+            new_features.append(x)
+        return new_features
+
+class SegFormerSegmentationHead(Module):
+    def __init__(self, channels: int, num_classes: int, num_features: int = 4):
+        super().__init__()
+        self.fuse = Sequential(
+            Conv2d(channels * num_features, channels, kernel_size=1, bias=False),
+            BatchNorm2d(channels),
+            ReLU()
+        )
+        self.predict = Conv2d(channels, num_classes, kernel_size=1)
+
+    def forward(self, features):
+        x = torch.cat(features, dim=1)
+        x = self.fuse(x)
+        x = self.predict(x)
+        return x
+
+class SegFormerBranch(Module):
+    def __init__(
+        self,
+        widths: List[int],
+        decoder_channels: int,
+        scale_factors: List[int],
+        num_classes: int = 2,
+    ):
+        super().__init__()
+        self.decoder = SegFormerDecoder(decoder_channels, widths[::-1], scale_factors)
+        self.head = SegFormerSegmentationHead(
+            decoder_channels, num_classes, num_features=len(widths)
+        )
+
+    def forward(self, enc_features):
+        features = self.decoder(enc_features[::-1])
+        segmentation = self.head(features)
+        return segmentation
+#############################################
 
 class PixelwiseLinear(Module):
     def __init__(
@@ -49,8 +117,8 @@ class MixingBlock(Module):
         super().__init__()
         self._convmix = Sequential(
             Conv2d(ch_in, ch_out, 3, groups=ch_out, padding=1),
-            PReLU(),
             InstanceNorm2d(ch_out),
+            PReLU()
         )
 
     def forward(self, x: Tensor, y: Tensor) -> Tensor:
@@ -106,11 +174,11 @@ class UpMask(Module):
         )
         self._convolution = Sequential(
             Conv2d(nin, nin, 3, 1, groups=nin, padding=1),
-            PReLU(),
             InstanceNorm2d(nin),
-            Conv2d(nin, nout, kernel_size=1, stride=1),
             PReLU(),
+            Conv2d(nin, nout, kernel_size=1, stride=1),
             InstanceNorm2d(nout),
+            PReLU()
         )
 
     def forward(self, x: Tensor, y: Optional[Tensor] = None) -> Tensor:

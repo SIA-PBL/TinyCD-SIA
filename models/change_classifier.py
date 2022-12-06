@@ -1,6 +1,6 @@
 from typing import List
 import torchvision
-from models.layers import MixingMaskAttentionBlock, PixelwiseLinear, UpMask, MixingBlock
+from models.layers import MixingMaskAttentionBlock, PixelwiseLinear, UpMask, MixingBlock, SegFormerBranch
 from torch import Tensor
 from torch.nn import Module, ModuleList, Sigmoid
 
@@ -44,17 +44,34 @@ class ChangeClassifier(Module):
         self._classify = PixelwiseLinear([32, 16, 8], [16, 8, 1], Sigmoid())
 
     def forward(self, ref: Tensor, test: Tensor) -> Tensor:
-        features = self._encode(ref, test)
-        latents = self._decode(features)
+        feat_refs, feat_tests, feat_mixed = self._encode(ref, test)
+        for num, enc_ref, enc_test in enumerate(zip(feat_refs, feat_tests)):
+            feat_mixed.append(self._mixing_mask[num](enc_ref, enc_test))
+
+        latents = self._decode(feat_mixed)
+        auxiliary_ref = self._segment(feat_refs)
+        auxiliary_test = self._segment(feat_tests)
+        print(auxiliary_ref)
         return self._classify(latents)
 
     def _encode(self, ref, test) -> List[Tensor]:
-        features = [self._first_mix(ref, test)]
+        '''
+        내부 Mixing Mask 연산을 제거하고 Backbone에 의해 인코딩된
+        피쳐 리스트만 추출하도록 수정
+        Input: ref, test
+        Output: ref, test에 _first_mix 적용한 값 들어있는 리스트 (features)
+                레이어 별 encoded_ref 리스트 (feat_refs) 
+                레이어 별 encoded_test 리스트 (feat_tests)
+        '''
+        feat_mixed = [self._first_mix(ref, test)]
+        feat_refs = []
+        feat_tests = []
         for num, layer in enumerate(self._backbone):
-            ref, test = layer(ref), layer(test)
-            if num != 0:
-                features.append(self._mixing_mask[num - 1](ref, test))
-        return features
+            if num != 0: # ignore raw image tensor
+                ref, test = layer(ref), layer(test)
+                feat_refs.append(ref)
+                feat_tests.append(test)
+        return feat_refs, feat_tests, feat_mixed
 
     def _decode(self, features) -> Tensor:
         upping = features[-1]
@@ -62,6 +79,16 @@ class ChangeClassifier(Module):
             upping = self._up[i](upping, features[j])
         return upping
 
+# TODO
+'''
+각 레이어별로 추출된 enc_ref와 enc_test의 리스트인 feat_refs와 feat_tests를 입력 받아
+concat 후 SegFormer의 decoder를 통과시켜 Segmentation을 구하는 함수
+'''
+
+def _segment(self, width, out_channels: int, scale_factor: int, features: List[Tensor]) -> Tensor:
+    segformer = SegFormerBranch(width=width, decoder_channels=out_channels, scale_factors=scale_factor)
+    sem_seg = segformer(features)
+    return sem_seg
 
 def _get_backbone(
     bkbn_name, pretrained, output_layer_bkbn, freeze_backbone
