@@ -1,5 +1,7 @@
-import argparse
 import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+import argparse
 import shutil
 
 import yaml
@@ -27,7 +29,7 @@ def load_config(config_file):
 cfg = load_config("config.yaml")
 
 loader_dict = {
-    'MyLoader': dataset.LEVIRLoader
+    'MyLoader': dataset.SPN7Loader
 }
 
 
@@ -107,37 +109,49 @@ def train(
 
     early_stopping = EarlyStopping(patience=patience_limit, verbose=True)
 
-    def evaluate(reference, testimg, mask):
+    def evaluate(reference, testimg, mask_ref, mask_test, mask):
         # All the tensors on the device:
         reference = reference.to(device).float()
         testimg = testimg.to(device).float()
+        mask_ref = mask_ref.to(device).float()
+        mask_test = mask_test.to(device).float()
         mask = mask.to(device).float()
 
         # Evaluating the model:
-        generated_mask = model(reference, testimg).squeeze(1)
-
+        generated_change_mask, generated_reverse_change_mask, generated_segmentation_ref_mask, generated_segmentation_test_mask = model(reference, testimg)
+        generated_change_mask = generated_change_mask.squeeze(1)
+        generated_reverse_change_mask = generated_reverse_change_mask.squeeze(1)
+        generated_segmentation_ref_mask = generated_segmentation_ref_mask.squeeze(1)
+        generated_segmentation_test_mask = generated_segmentation_test_mask.squeeze(1)
         # Loss gradient descend step:
-        it_loss = criterion(generated_mask, mask)
+        it_change_loss = criterion(generated_change_mask, mask) + criterion(generated_reverse_change_mask, mask)
+        it_segmentation_loss = criterion(generated_segmentation_ref_mask, mask_ref) + criterion(generated_segmentation_test_mask, mask_test)
 
         # Feeding the comparison metric tool:
-        bin_genmask = (generated_mask.to("cpu") >
+        bin_genmask = (generated_change_mask.to("cpu") >
                        0.5).detach().numpy().astype(int)
+        #bin_reverse_genmask = (generated_reverse_change_mask.to("cpu") >
+                       #0.5).detach().numpy().astype(int)
         mask = mask.to("cpu").numpy().astype(int)
         tool4metric.update_cm(pr=bin_genmask, gt=mask)
 
-        return it_loss
+        return it_change_loss, it_segmentation_loss
 
     def training_phase(epc):
         tool4metric.clear()
         print("Epoch {}".format(epc))
         model.train()
         epoch_loss = cfg['params']['epoch_loss']
-        for (reference, testimg), mask in tqdm(dataset_train):
+        weight = [0.5, 0.5]
+        for (reference, testimg), (mask_ref, mask_test, mask) in tqdm(dataset_train):
             # Reset the gradients:
             optimizer.zero_grad()
 
             # Loss gradient descend step:
-            it_loss = evaluate(reference, testimg, mask)
+            it_change_loss, it_segmentation_loss = evaluate(reference, testimg, mask_ref, mask_test, mask)
+            weight[0] = it_segmentation_loss/(it_change_loss + it_segmentation_loss)
+            weight[1] = 1 - weight[0]
+            it_loss = weight[0] * it_change_loss + weight[1] * it_segmentation_loss
             it_loss.backward()
             optimizer.step()
 
@@ -182,9 +196,13 @@ def train(
         epoch_loss_eval = 0.0
         tool4metric.clear()
         with torch.no_grad():
-            for (reference, testimg), mask in dataset_val:
-                epoch_loss_eval += evaluate(reference,
-                                            testimg, mask).to("cpu").numpy()
+            weight = [0.5, 0.5]
+            for (reference, testimg), (mask_ref, mask_test, mask) in dataset_val:
+                it_change_loss, it_segmentation_loss = evaluate(reference, testimg, mask_ref, mask_test, mask)
+                weight[0] = it_segmentation_loss/(it_change_loss + it_segmentation_loss)
+                weight[1] = 1 - weight[0]
+                it_loss = weight[0] * it_change_loss + weight[1] * it_segmentation_loss
+                epoch_loss_eval += it_loss.to("cpu").numpy()
 
         epoch_loss_eval /= len(dataset_val)
 

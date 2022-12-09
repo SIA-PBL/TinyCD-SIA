@@ -8,6 +8,7 @@ from torch.nn import (
     Module,
     ModuleList,
     PReLU,
+    Sigmoid,
     Sequential,
     Upsample,
     UpsamplingBilinear2d,
@@ -18,13 +19,14 @@ from torch.nn import (
 class SegFormerDecoderBlock(Sequential):
     def __init__(
         self, 
-        fin: List[int], 
-        fout: List[int],
+        fin: int, 
+        fout: int,
         scale_factor: int = 2
         )-> None:
         super().__init__(
-            UpsamplingBilinear2d(scale_factor=scale_factor),
+            # UpsamplingBilinear2d(scale_factor=scale_factor),
             Conv2d(fin, fout, kernel_size=1),
+            UpsamplingBilinear2d(scale_factor=scale_factor),
         )
 
 class SegFormerDecoder(Module):
@@ -45,14 +47,17 @@ class SegFormerDecoder(Module):
         return new_features
 
 class SegFormerSegmentationHead(Module):
-    def __init__(self, channels: int, num_classes: int, num_features: int = 4):
+    def __init__(self, channels: int, num_classes: int, num_features: int = 3):
         super().__init__()
         self.fuse = Sequential(
             Conv2d(channels * num_features, channels, kernel_size=1, bias=False),
             BatchNorm2d(channels),
             ReLU()
         )
-        self.predict = Conv2d(channels, num_classes, kernel_size=1)
+        self.predict = Sequential(
+            Conv2d(channels, num_classes, kernel_size=1),
+            Sigmoid()
+        )
 
     def forward(self, features):
         x = torch.cat(features, dim=1)
@@ -66,10 +71,10 @@ class SegFormerBranch(Module):
         widths: List[int],
         decoder_channels: int,
         scale_factors: List[int],
-        num_classes: int = 2,
+        num_classes: int = 1,
     ):
         super().__init__()
-        self.decoder = SegFormerDecoder(decoder_channels, widths[::-1], scale_factors)
+        self.decoder = SegFormerDecoder(decoder_channels, widths[::-1], scale_factors[::-1])
         self.head = SegFormerSegmentationHead(
             decoder_channels, num_classes, num_features=len(widths)
         )
@@ -164,13 +169,13 @@ class MixingMaskAttentionBlock(Module):
 class UpMask(Module):
     def __init__(
         self,
-        up_dimension: int,
+        scale_factor: float,
         nin: int,
         nout: int,
     ):
         super().__init__()
         self._upsample = Upsample(
-            size=(up_dimension, up_dimension), mode="bilinear", align_corners=True
+            scale_factor=scale_factor, mode="bilinear", align_corners=True
         )
         self._convolution = Sequential(
             Conv2d(nin, nin, 3, 1, groups=nin, padding=1),

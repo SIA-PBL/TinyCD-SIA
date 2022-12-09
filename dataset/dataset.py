@@ -7,10 +7,10 @@ from torchvision.transforms import Normalize
 
 import numpy as np
 import torch
-from matplotlib.image import imread
-import cv2
+from PIL import Image
 from torch.utils.data import Dataset
 from torch import Tensor
+from torch.nn import Upsample
 
 import yaml
 import errno
@@ -156,7 +156,7 @@ class SPN7Loader(Dataset, Sized):
             list_images_1.extend(
                 list_images[:length-(int(cfg['params']['time_interval'])+3)])
             list_images_2.extend(
-                list_images[int(cfg['params']['time_interval']):length-(int(cfg['params']['time_interval'])+2)])
+                list_images[int(cfg['params']['time_interval']):length-3])
         # Make label pair and save path in each list1 and list2 (list1 : before, list2 : after)
         # Set label pair for adjacent period
         for (root, directories, files) in os.walk(self.dir_path_label):
@@ -173,12 +173,10 @@ class SPN7Loader(Dataset, Sized):
         #####################################################################
 
         # Loading the images:
-        x_ref = cv2.imread(list_images_1[indx])
-        x_test = cv2.imread(list_images_2[indx])
-        x_mask_ref = cv2.imread(
-            list_labels_1[indx], cv2.IMREAD_GRAYSCALE)
-        x_mask_test = cv2.imread(
-            list_labels_2[indx], cv2.IMREAD_GRAYSCALE)
+        x_ref = Image.open(list_images_1[indx])
+        x_test = Image.open(list_images_2[indx])
+        x_mask_ref = Image.open(list_labels_1[indx]).convert('L')
+        x_mask_test = Image.open(list_labels_2[indx]).convert('L')
 
         # Resize the size to 1024_1024 (Size of some images is not 1024*1024)
         x_ref = np.resize(x_ref, (1024, 1024, 3))
@@ -188,13 +186,18 @@ class SPN7Loader(Dataset, Sized):
 
         # Change mask generation
         x_mask = np.logical_xor(x_mask_ref, x_mask_test)
-        x_mask = _binarize(x_mask)
+        
+        x_mask_ref = _binarize(x_mask_ref)
+        x_mask_test = _binarize(x_mask_test)
 
-        del x_mask_ref
-        del x_mask_test
-        # Convert int64 to uint8
+        # Convenrt datatypes
+        x_ref = x_ref.astype(np.float32)
+        x_test = x_test.astype(np.float32)
+        x_mask_ref = x_mask_ref.astype(np.uint8)
+        x_mask_test = x_mask_test.astype(np.uint8)
         x_mask = x_mask.astype(np.uint8)
-
+        
+        '''
         # Random crop to size 256*256
         x_ref, x_test, x_mask = self._random_crop(
             x_ref, x_test, x_mask
@@ -224,20 +227,17 @@ class SPN7Loader(Dataset, Sized):
         x_ref, x_test, x_mask = self._to_ndarrays(
             x_ref, x_test, x_mask
         )
-
+        '''
         # Data augmentation in case of training:
         if self._mode == "train":
-            x_ref, x_test, x_mask = self._augment(
-                x_ref, x_test, x_mask)
-
-        # Change datatype from bool to float
-        x_ref, x_test, x_mask = x_ref.astype(np.float), x_test.astype(
-            np.float), x_mask.astype(np.float)
+            x_ref, x_test, x_mask_ref, x_mask_test, x_mask = self._augment(
+                x_ref, x_test, x_mask_ref, x_mask_test, x_mask)
 
         # Trasform data from HWC to CWH:
-        x_ref, x_test, x_mask = self._to_tensors_with_normalization(x_ref, x_test, x_mask)        
+        x_ref, x_test, x_mask_ref, x_mask_test, x_mask = self._to_tensors_with_normalization(
+            x_ref, x_test, x_mask_ref, x_mask_test, x_mask)        
 
-        return (x_ref, x_test), x_mask
+        return (x_ref, x_test), (x_mask_ref, x_mask_test, x_mask)
 
 
     # Total number of image and label pair
@@ -246,27 +246,29 @@ class SPN7Loader(Dataset, Sized):
         for (root, directories, files) in os.walk(self.dir_path_label):
             if len(files) != 0:
                 num += (len(files) - 1)
-            else:
-                raise FileNotFoundError(
-                    errno.ENOENT, os.strerror(errno.ENOENT), directories)
+            #else:
+                #raise FileNotFoundError(
+                    #errno.ENOENT, os.strerror(errno.ENOENT), directories)
 
         return num
 
     def _augment(
-        self, x_ref: np.ndarray, x_test: np.ndarray, x_mask: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        # First apply augmentations in equal manner to test/ref/x_mask:
+        self, x_ref: np.ndarray, x_test: np.ndarray, x_mask_ref: np.ndarray, x_mask_test: np.ndarray, x_mask: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        # First apply augmentations in equal manner to test/ref/x_mask_ref/x_mask_test/x_mask:
         transformed = self._augmentation(
-            image=x_ref, image0=x_test, x_mask0=x_mask)
+            image=x_ref, image0=x_test, x_mask0=x_mask_ref, x_mask1=x_mask_test, x_mask2=x_mask)
         x_ref = transformed["image"]
         x_test = transformed["image0"]
-        x_mask = transformed["x_mask0"]
+        x_mask_ref = transformed["x_mask0"]
+        x_mask_test = transformed["x_mask1"]
+        x_mask = transformed["x_mask2"]
 
         # Then apply augmentation to single test ref in different way:
         x_ref = self._aberration(image=x_ref)["image"]
         x_test = self._aberration(image=x_test)["image"]
 
-        return x_ref, x_test, x_mask
+        return x_ref, x_test, x_mask_ref, x_mask_test, x_mask
     
     def _random_crop(
         self, x_ref: np.ndarray, x_test: np.ndarray, x_mask: np.ndarray
@@ -281,11 +283,13 @@ class SPN7Loader(Dataset, Sized):
         return x_ref, x_test, x_mask
 
     def _to_tensors_with_normalization(
-        self, x_ref: np.ndarray, x_test: np.ndarray, x_mask: np.ndarray
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+        self, x_ref: np.ndarray, x_test: np.ndarray, x_mask_ref: np.ndarray, x_mask_test: np.ndarray, x_mask: np.ndarray
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         return (
             self._normalize(torch.tensor(x_ref).permute(2, 0, 1)),
             self._normalize(torch.tensor(x_test).permute(2, 0, 1)),
+            torch.tensor(x_mask_ref),
+            torch.tensor(x_mask_test),
             torch.tensor(x_mask),
         )
 
@@ -351,7 +355,7 @@ def _create_shared_augmentation():
             alb.Flip(p=0.5),
             alb.Rotate(limit=5, p=0.5),
         ],
-        additional_targets={"image0": "image", "x_mask0": "mask"},
+        additional_targets={"image0": "image", "x_mask0": "mask", "x_mask1": "mask", "x_mask2": "mask"},
     )
 
 
