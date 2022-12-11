@@ -34,25 +34,31 @@ class ChangeClassifier(Module):
         # Initialize Upsampling blocks:
         self._up = ModuleList(
             [
-                UpMask(64, 56, 64),
-                UpMask(128, 64, 64),
-                UpMask(256, 64, 32),
+                UpMask(2, 56, 64),
+                UpMask(2, 64, 64),
+                UpMask(2, 64, 32),
             ]
         )
 
         # Final classification layer:
         self._classify = PixelwiseLinear([32, 16, 8], [16, 8, 1], Sigmoid())
+        # segmentation layers
+        self._segment = SegFormerBranch([24, 32, 56], 56, [2, 4, 8], 1)
 
     def forward(self, ref: Tensor, test: Tensor) -> Tensor:
         feat_refs, feat_tests, feat_mixed = self._encode(ref, test)
-        for num, enc_ref, enc_test in enumerate(zip(feat_refs, feat_tests)):
+        feat_reverse_refs, feat_reverse_tests, feat_reverse_mixed = self._encode(test, ref)
+        for num, (enc_ref, enc_test) in enumerate(list(zip(feat_refs, feat_tests))):
             feat_mixed.append(self._mixing_mask[num](enc_ref, enc_test))
+        for num, (enc_reverse_ref, enc_reverse_test) in enumerate(list(zip(feat_reverse_refs, feat_reverse_tests))):
+            feat_reverse_mixed.append(self._mixing_mask[num](enc_reverse_ref, enc_reverse_test))
 
         latents = self._decode(feat_mixed)
+        reverse_latents = self._decode(feat_reverse_mixed)
         auxiliary_ref = self._segment(feat_refs)
         auxiliary_test = self._segment(feat_tests)
-        print(auxiliary_ref)
-        return self._classify(latents)
+        #print(auxiliary_ref)
+        return self._classify(latents), self._classify(reverse_latents), auxiliary_ref, auxiliary_test
 
     def _encode(self, ref, test) -> List[Tensor]:
         '''
@@ -67,8 +73,8 @@ class ChangeClassifier(Module):
         feat_refs = []
         feat_tests = []
         for num, layer in enumerate(self._backbone):
+            ref, test = layer(ref), layer(test)
             if num != 0: # ignore raw image tensor
-                ref, test = layer(ref), layer(test)
                 feat_refs.append(ref)
                 feat_tests.append(test)
         return feat_refs, feat_tests, feat_mixed
@@ -84,11 +90,12 @@ class ChangeClassifier(Module):
 각 레이어별로 추출된 enc_ref와 enc_test의 리스트인 feat_refs와 feat_tests를 입력 받아
 concat 후 SegFormer의 decoder를 통과시켜 Segmentation을 구하는 함수
 '''
-
+'''
 def _segment(self, width, out_channels: int, scale_factor: int, features: List[Tensor]) -> Tensor:
     segformer = SegFormerBranch(width=width, decoder_channels=out_channels, scale_factors=scale_factor)
     sem_seg = segformer(features)
     return sem_seg
+'''
 
 def _get_backbone(
     bkbn_name, pretrained, output_layer_bkbn, freeze_backbone
