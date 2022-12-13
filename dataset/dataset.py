@@ -394,10 +394,11 @@ class SPN7Loader_256(Dataset, Sized):
             files.sort()
             length = len(files)
             list_images = []
-            if length != 0:
+            if len(files) != 0:
                 for image_file in files:
                     if 'global' in image_file:
                         list_images.append(join(root, image_file))
+                length = len(list_images)
                 list_images_1.extend(
                     list_images[:length-16*int(cfg['params']['time_interval'])])
                 list_images_2.extend(
@@ -412,6 +413,7 @@ class SPN7Loader_256(Dataset, Sized):
             if len(files) != 0:
                 for label_file in files:
                     list_labels.append(join(root, label_file))
+                length = len(list_labels)
                 list_labels_1.extend(
                     list_labels[:length-16*int(cfg['params']['time_interval'])])
                 list_labels_2.extend(
@@ -462,8 +464,7 @@ class SPN7Loader_256(Dataset, Sized):
         num = 0
         for (root, directories, files) in os.walk(self.dir_path_label):
             if len(files) != 0:
-                num += len(files) - int(cfg['params']['time_interval'])
-        num *= 16
+                num += len(files) - 16*int(cfg['params']['time_interval'])
             #else:
                 #raise FileNotFoundError(
                     #errno.ENOENT, os.strerror(errno.ENOENT), directories)
