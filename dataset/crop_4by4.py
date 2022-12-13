@@ -1,6 +1,6 @@
 import os
 from os.path import join, basename, normpath
-from split_image import split_image, 
+from split_image import split_image
 
 
 def crop_fbf(data_path: str, mode: str):
