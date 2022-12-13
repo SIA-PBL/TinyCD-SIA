@@ -150,29 +150,30 @@ class SPN7Loader(Dataset, Sized):
         for (root, directories, files) in os.walk(self.dir_path_image):
             directories.sort()
             files.sort()
-            length = len(files)
             list_images = []
-
-            for image_file in files:
-                list_images.append(join(root, image_file))
-            list_images_1.extend(
-                list_images[:length-(int(cfg['params']['time_interval'])+3)])
-            list_images_2.extend(
-                list_images[int(cfg['params']['time_interval']):length-3])
+            if len(files) != 0:
+                for image_file in files:
+                    if 'global' in image_file:
+                        list_images.append(join(root, image_file))
+                length = len(list_images)
+                list_images_1.extend(
+                    list_images[:length-int(cfg['params']['time_interval'])])
+                list_images_2.extend(
+                    list_images[int(cfg['params']['time_interval']):])
         # Make label pair and save path in each list1 and list2 (list1 : before, list2 : after)
         # Set label pair for adjacent period
         for (root, directories, files) in os.walk(self.dir_path_label):
             directories.sort()
             files.sort()
-            length = len(files)
             list_labels = []
-
-            for label_file in files:
-                list_labels.append(join(root, label_file))
-            list_labels_1.extend(
-                list_labels[:length-int(cfg['params']['time_interval'])])
-            list_labels_2.extend(
-                list_labels[int(cfg['params']['time_interval']):])
+            if len(files) != 0:
+                for label_file in files:
+                    list_labels.append(join(root, label_file))
+                length = len(list_labels)
+                list_labels_1.extend(
+                    list_labels[:length-int(cfg['params']['time_interval'])])
+                list_labels_2.extend(
+                    list_labels[int(cfg['params']['time_interval']):])
         #####################################################################
 
         # Loading the images:
@@ -249,7 +250,7 @@ class SPN7Loader(Dataset, Sized):
         num = 0
         for (root, directories, files) in os.walk(self.dir_path_label):
             if len(files) != 0:
-                num += (len(files) - 1)
+                num += len(files) - int(cfg['params']['time_interval'])
             #else:
                 #raise FileNotFoundError(
                     #errno.ENOENT, os.strerror(errno.ENOENT), directories)
@@ -419,7 +420,8 @@ class SPN7Loader_256(Dataset, Sized):
                 list_labels_2.extend(
                     list_labels[16*int(cfg['params']['time_interval']):])
         #####################################################################
-
+        print(list_images_1[indx])
+        print(list_labels_1[indx])
         # Loading the images:
         x_ref = Image.open(list_images_1[indx])
         x_test = Image.open(list_images_2[indx])
