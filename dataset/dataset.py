@@ -134,8 +134,8 @@ class SPN7Loader(Dataset, Sized):
 
         ##############################TO-DO##################################
         # Normalization
-        self._normalize = Normalize(mean=[0.485, 0.456, 0.406],
-                                    std=[0.229, 0.224, 0.225])
+        self._normalize = Normalize(mean=[0.327, 0.385, 0.384],
+                                    std=[0.125, 0.145, 0.144])
         #####################################################################
 
     def __getitem__(self, indx):
@@ -351,6 +351,148 @@ class SPN7Loader(Dataset, Sized):
             upsample_object(x_ref),
             upsample_object(x_test),
             upsample_object(x_mask),
+        )
+
+class SPN7Loader_256(Dataset, Sized):
+    # SPN7 dataloader
+    def __init__(
+        self,
+        data_path: str,
+        mode: str,
+    ) -> None:
+
+        # Set image and label directory path
+        self._mode = mode
+        self.dir_path_image = os.path.join(data_path, mode, "images_256")
+        self.dir_path_label = os.path.join(data_path, mode, "labels_256")
+
+        # Perform augmentation only when training
+
+        if mode == 'train':
+            self._augmentation = _create_shared_augmentation()
+            self._aberration = _create_aberration_augmentation()
+
+        self._random_crop_augmentation = _create_shared_random_crop()
+
+        ##############################TO-DO##################################
+        # Normalization
+        self._normalize = Normalize(mean=[0.327, 0.385, 0.384],
+                                    std=[0.125, 0.145, 0.144])
+        #####################################################################
+
+    def __getitem__(self, indx):
+        list_images_1 = []
+        list_images_2 = []
+        list_labels_1 = []
+        list_labels_2 = []
+
+        ######################REFACTORED#######################################
+        # Make image pair and save path in each list1 and list2 (list1 : before, list2 : after)
+        # Set image pair for adjacent period
+        for (root, directories, files) in os.walk(self.dir_path_image):
+            directories.sort()
+            files.sort()
+            length = len(files)
+            list_images = []
+            if length != 0:
+                for image_file in files:
+                    if 'global' in image_file:
+                        list_images.append(join(root, image_file))
+                list_images_1.extend(
+                    list_images[:length-16*int(cfg['params']['time_interval'])])
+                list_images_2.extend(
+                    list_images[16*int(cfg['params']['time_interval']):])
+        # Make label pair and save path in each list1 and list2 (list1 : before, list2 : after)
+        # Set label pair for adjacent period
+        for (root, directories, files) in os.walk(self.dir_path_label):
+            directories.sort()
+            files.sort()
+            length = len(files)
+            list_labels = []
+            if len(files) != 0:
+                for label_file in files:
+                    list_labels.append(join(root, label_file))
+                list_labels_1.extend(
+                    list_labels[:length-16*int(cfg['params']['time_interval'])])
+                list_labels_2.extend(
+                    list_labels[16*int(cfg['params']['time_interval']):])
+        #####################################################################
+
+        # Loading the images:
+        x_ref = Image.open(list_images_1[indx])
+        x_test = Image.open(list_images_2[indx])
+        
+        x_mask_ref = Image.open(list_labels_1[indx]).convert('L')
+        x_mask_test = Image.open(list_labels_2[indx]).convert('L')
+
+        # Resize the size to 1024_1024 (Size of some images is not 1024*1024)
+        x_ref = np.resize(x_ref, (256, 256, 3))
+        x_test = np.resize(x_test, (256, 256, 3))
+        x_mask_ref = np.resize(x_mask_ref, (256, 256))
+        x_mask_test = np.resize(x_mask_test, (256, 256))
+
+        # Convenrt datatypes
+        x_ref = x_ref.astype(np.float32)
+        x_test = x_test.astype(np.float32)
+        x_mask_ref = x_mask_ref.astype(np.uint8)
+        x_mask_test = x_mask_test.astype(np.uint8)
+
+        x_mask_ref = _binarize(x_mask_ref)
+        x_mask_test = _binarize(x_mask_test)
+
+        # Change mask generation
+        x_mask = np.logical_xor(x_mask_ref, x_mask_test)
+        
+        x_mask = x_mask.astype(np.uint8)
+        
+        # Data augmentation in case of training:
+        if self._mode == "train":
+            x_ref, x_test, x_mask_ref, x_mask_test, x_mask = self._augment(
+                x_ref, x_test, x_mask_ref, x_mask_test, x_mask)
+
+        # Trasform data from HWC to CWH:
+        x_ref, x_test, x_mask_ref, x_mask_test, x_mask = self._to_tensors_with_normalization(
+            x_ref, x_test, x_mask_ref, x_mask_test, x_mask)        
+
+        return (x_ref, x_test), (x_mask_ref, x_mask_test, x_mask)
+
+
+    # Total number of image and label pair
+    def __len__(self):
+        num = 0
+        for (root, directories, files) in os.walk(self.dir_path_label):
+            if len(files) != 0:
+                num += len(files) - int(cfg['params']['time_interval'])
+        num *= 16
+            #else:
+                #raise FileNotFoundError(
+                    #errno.ENOENT, os.strerror(errno.ENOENT), directories)
+
+        return num
+
+    def _augment(
+        self, x_ref: np.ndarray, x_test: np.ndarray, x_mask: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        # First apply augmentations in equal manner to test/ref/x_mask:
+        transformed = self._augmentation(
+            image=x_ref, image0=x_test, x_mask0=x_mask)
+        x_ref = transformed["image"]
+        x_test = transformed["image0"]
+        x_mask = transformed["x_mask0"]
+
+        # Then apply augmentation to single test ref in different way:
+       # x_ref = self._aberration(image=x_ref)["image"]
+        #x_test = self._aberration(image=x_test)["image"]
+
+        return x_ref, x_test, x_mask
+
+    def _to_tensors_with_normalization(
+        self, x_ref: np.ndarray, x_test: np.ndarray, x_mask: np.ndarray
+    ) -> Tuple[Tensor, Tensor, Tensor]:
+        return (
+            self._normalize(torch.tensor(x_ref*(1/255)).permute(2, 0, 1)),
+            self._normalize(torch.tensor(x_test*(1/255)).permute(2, 0, 1)),
+            torch.tensor(x_mask),
         )
 
 def _create_shared_augmentation():
