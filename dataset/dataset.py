@@ -7,6 +7,7 @@ from torchvision.transforms import Normalize
 
 import numpy as np
 import torch
+from matplotlib.pyplot import imread, imsave
 from PIL import Image
 from torch.utils.data import Dataset
 from torch import Tensor
@@ -147,6 +148,7 @@ class SPN7Loader(Dataset, Sized):
         # Make image pair and save path in each list1 and list2 (list1 : before, list2 : after)
         # Set image pair for adjacent period
         for (root, directories, files) in os.walk(self.dir_path_image):
+            directories.sort()
             files.sort()
             length = len(files)
             list_images = []
@@ -160,6 +162,7 @@ class SPN7Loader(Dataset, Sized):
         # Make label pair and save path in each list1 and list2 (list1 : before, list2 : after)
         # Set label pair for adjacent period
         for (root, directories, files) in os.walk(self.dir_path_label):
+            directories.sort()
             files.sort()
             length = len(files)
             list_labels = []
@@ -184,17 +187,18 @@ class SPN7Loader(Dataset, Sized):
         x_mask_ref = np.resize(x_mask_ref, (1024, 1024))
         x_mask_test = np.resize(x_mask_test, (1024, 1024))
 
-        # Change mask generation
-        x_mask = np.logical_xor(x_mask_ref, x_mask_test)
-        
-        x_mask_ref = _binarize(x_mask_ref)
-        x_mask_test = _binarize(x_mask_test)
-
         # Convenrt datatypes
         x_ref = x_ref.astype(np.float32)
         x_test = x_test.astype(np.float32)
         x_mask_ref = x_mask_ref.astype(np.uint8)
         x_mask_test = x_mask_test.astype(np.uint8)
+
+        x_mask_ref = _binarize(x_mask_ref)
+        x_mask_test = _binarize(x_mask_test)
+
+        # Change mask generation
+        x_mask = np.logical_xor(x_mask_ref, x_mask_test)
+        
         x_mask = x_mask.astype(np.uint8)
         
         '''
@@ -265,8 +269,8 @@ class SPN7Loader(Dataset, Sized):
         x_mask = transformed["x_mask2"]
 
         # Then apply augmentation to single test ref in different way:
-        x_ref = self._aberration(image=x_ref)["image"]
-        x_test = self._aberration(image=x_test)["image"]
+        #x_ref = self._aberration(image=x_ref)["image"]
+        #x_test = self._aberration(image=x_test)["image"]
 
         return x_ref, x_test, x_mask_ref, x_mask_test, x_mask
     
@@ -286,8 +290,8 @@ class SPN7Loader(Dataset, Sized):
         self, x_ref: np.ndarray, x_test: np.ndarray, x_mask_ref: np.ndarray, x_mask_test: np.ndarray, x_mask: np.ndarray
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         return (
-            self._normalize(torch.tensor(x_ref).permute(2, 0, 1)),
-            self._normalize(torch.tensor(x_test).permute(2, 0, 1)),
+            torch.tensor(x_ref*(1/255)).permute(2, 0, 1),
+            torch.tensor(x_test*(1/255)).permute(2, 0, 1),
             torch.tensor(x_mask_ref),
             torch.tensor(x_mask_test),
             torch.tensor(x_mask),
