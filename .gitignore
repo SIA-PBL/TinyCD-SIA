@@ -132,7 +132,8 @@ dmypy.json
 dataset/LEVIR-CD-256
 dataset/WHU-CD-256
 dataset/SPN7
+dataset/SPN7_256
 dataset/SPN7.zip
 
 # results
-dataset/results/*
+dataset/results/
