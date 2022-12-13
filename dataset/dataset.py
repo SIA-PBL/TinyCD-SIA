@@ -471,30 +471,34 @@ class SPN7Loader_256(Dataset, Sized):
         return num
 
     def _augment(
-        self, x_ref: np.ndarray, x_test: np.ndarray, x_mask: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        # First apply augmentations in equal manner to test/ref/x_mask:
+        self, x_ref: np.ndarray, x_test: np.ndarray, x_mask_ref: np.ndarray, x_mask_test: np.ndarray, x_mask: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        # First apply augmentations in equal manner to test/ref/x_mask_ref/x_mask_test/x_mask:
         transformed = self._augmentation(
-            image=x_ref, image0=x_test, x_mask0=x_mask)
+            image=x_ref, image0=x_test, x_mask0=x_mask_ref, x_mask1=x_mask_test, x_mask2=x_mask)
         x_ref = transformed["image"]
         x_test = transformed["image0"]
-        x_mask = transformed["x_mask0"]
+        x_mask_ref = transformed["x_mask0"]
+        x_mask_test = transformed["x_mask1"]
+        x_mask = transformed["x_mask2"]
 
         # Then apply augmentation to single test ref in different way:
-       # x_ref = self._aberration(image=x_ref)["image"]
+        #x_ref = self._aberration(image=x_ref)["image"]
         #x_test = self._aberration(image=x_test)["image"]
 
-        return x_ref, x_test, x_mask
+        return x_ref, x_test, x_mask_ref, x_mask_test, x_mask
 
     def _to_tensors_with_normalization(
-        self, x_ref: np.ndarray, x_test: np.ndarray, x_mask: np.ndarray
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+        self, x_ref: np.ndarray, x_test: np.ndarray, x_mask_ref: np.ndarray, x_mask_test: np.ndarray, x_mask: np.ndarray
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         return (
-            self._normalize(torch.tensor(x_ref*(1/255)).permute(2, 0, 1)),
-            self._normalize(torch.tensor(x_test*(1/255)).permute(2, 0, 1)),
+            torch.tensor(x_ref*(1/255)).permute(2, 0, 1),
+            torch.tensor(x_test*(1/255)).permute(2, 0, 1),
+            torch.tensor(x_mask_ref),
+            torch.tensor(x_mask_test),
             torch.tensor(x_mask),
         )
-
+        
 def _create_shared_augmentation():
     return alb.Compose(
         [
