@@ -418,8 +418,6 @@ class SPN7Loader_256(Dataset, Sized):
                 list_labels_2.extend(
                     list_labels[16*int(cfg['params']['time_interval']):])
         #####################################################################
-        print(list_images_1[indx])
-        print(list_labels_1[indx])
         # Loading the images:
         x_ref = Image.open(list_images_1[indx])
         x_test = Image.open(list_images_2[indx])
