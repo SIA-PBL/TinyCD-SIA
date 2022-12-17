@@ -11,3 +11,12 @@ params:
   patience_limit: 5
 settings:
   set_seed: True
+data_config:
+  mean: (0.485, 0.456, 0.406, 0.485, 0.456, 0.406) #if transductive trud (0.485, 0.456, 0.406, 0.485, 0.456, 0.406, 0.485, 0.456, 0.406)
+  std: (0.229, 0.224, 0.225, 0.229, 0.224, 0.225)
+  patch_size: 256
+  resize_scale: 4
+  transductive: False,
+  train_img_shape: (1024,1024)
+  val_img_shape: (1024,1024)
+  overlap_size: 128
