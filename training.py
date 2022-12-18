@@ -1,6 +1,6 @@
 import os
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+#os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # clear cache
 os.system('python clear_cache.py')
@@ -29,14 +29,12 @@ def load_config(config_file):
 
     return config
 
-
 cfg = load_config("config.yaml")
 
 loader_dict = {
     # 'MyLoader': dataset.SPN7Loader
-    'MyLoader': dataset.SPN7Loader_256
+    'spacenet7': spacenet7.SPN7Loader
 }
-
 
 def parse_arguments():
     # Argument Parser creation
@@ -55,7 +53,6 @@ def parse_arguments():
         help="log path",
         default=cfg['paths']['logpath']
     )
-
     group_gpus = parser.add_mutually_exclusive_group()
     group_gpus.add_argument(
         '--gpu-id',
@@ -88,7 +85,6 @@ def parse_arguments():
 
     return parsed_arguments
 
-
 def train(
     dataset_train,
     dataset_val,
@@ -101,72 +97,80 @@ def train(
     epochs,
     save_after,
     device,
-    patience_limit
-):
+    patience_limit):
 
     model = model.to(device)
-
     tool4metric = ConfuseMatrixMeter(n_class=2)
 
-    training_loss_list = []
-    validation_loss_list = []
-    epcs = []
+    training_loss_list      = []
+    validation_loss_list    = []
+    epcs                    = []
 
     early_stopping = EarlyStopping(patience=patience_limit, verbose=True)
+    
+    segl_weight = cfg.loss.seg_weight
+    cdl_weight  = cfg.loss.cd_weight  
+    
+    best_loss = 0.0
 
-    def evaluate(reference, testimg, mask_ref, mask_test, mask):
+    def evaluate(preimg, posimg, preseg, posseg, cd_gt):
         # All the tensors on the device:
-        reference = reference.to(device).float()
-        testimg = testimg.to(device).float()
-        mask_ref = mask_ref.to(device).float()
-        mask_test = mask_test.to(device).float()
-        mask = mask.to(device).float()
+        preimg = preimg.to(device).float()
+        posimg = posimg.to(device).float()
+        preseg = preseg.to(device).float()
+        posseg = posseg.to(device).float()
+        cd_gt = cd_gt.to(device).float()
 
         # Evaluating the model:
-        generated_change_mask, generated_reverse_change_mask, generated_segmentation_ref_mask, generated_segmentation_test_mask = model(reference, testimg)
-        generated_change_mask = generated_change_mask.squeeze(1)
-        generated_reverse_change_mask = generated_reverse_change_mask.squeeze(1)
-        generated_segmentation_ref_mask = generated_segmentation_ref_mask.squeeze(1)
-        generated_segmentation_test_mask = generated_segmentation_test_mask.squeeze(1)
+        p_cd, p_cd_reverse, p_preseg, p_posseg = model(preimg, posimg)
+        p_cd            = p_cd.squeeze(1)
+        p_cd_reverse    = p_cd_reverse.squeeze(1)
+        p_preseg        = p_preseg.squeeze(1)
+        p_posseg        = p_posseg.squeeze(1)
+        
         # Loss gradient descend step:
-        it_change_loss = criterion(generated_change_mask, mask) + criterion(generated_reverse_change_mask, mask)
-        it_segmentation_loss = criterion(generated_segmentation_ref_mask, mask_ref) + criterion(generated_segmentation_test_mask, mask_test)
+        it_change_loss = criterion(p_cd, cd_gt) + criterion(p_cd_reverse, cd_gt)
+        it_segmentation_loss = criterion(p_preseg, preseg) + criterion(p_posseg, posseg)
 
         # Feeding the comparison metric tool:
-        bin_genmask = (generated_change_mask.to("cpu") >
-                       0.5).detach().numpy().astype(int)
-        #bin_reverse_genmask = (generated_reverse_change_mask.to("cpu") >
-                       #0.5).detach().numpy().astype(int)
-        mask = mask.to("cpu").numpy().astype(int)
-        tool4metric.update_cm(pr=bin_genmask, gt=mask)
+        cd_pr           = (generated_change_mask.to("cpu") > 0.5).detach().numpy().astype(int)
+        cd_gt           = cd_gt.to("cpu").numpy().astype(int)
+        tool4metric.update_cm(pr=cd_pr, gt=cd_gt)
 
         return it_change_loss, it_segmentation_loss
 
     def training_phase(epc):
         tool4metric.clear()
         print("Epoch {}".format(epc))
+        
         model.train()
-        epoch_loss = cfg['params']['epoch_loss']
-        weight = [0.5, 0.5]
-        for (reference, testimg), (mask_ref, mask_test, mask) in tqdm(dataset_train):
+        epoch_loss  = cfg['params']['epoch_loss']
+        
+        for sample in tqdm(dataset_train):
+            # Data setting
+            preimg = sample['pre']
+            posimg = sample['pos']
+            staimg = sample['sta']
+            preseg = sample['pregt']
+            posseg = sample['posgt']
+            cd_gt  = sample['cdgt']
+
             # Reset the gradients:
             optimizer.zero_grad()
 
             # Loss gradient descend step:
-            it_change_loss, it_segmentation_loss = evaluate(reference, testimg, mask_ref, mask_test, mask)
-            weight[0] = it_segmentation_loss/(it_change_loss + it_segmentation_loss)
-            weight[1] = 1 - weight[0]
-            it_loss = weight[0] * it_change_loss + weight[1] * it_segmentation_loss
+            it_cd_loss, it_seg_loss = evaluate(preimg, posimg, preseg, posseg, cd_gt)
+            
+            it_loss = cdl_weight * it_cd_loss + segl_weight * it_seg_loss
             it_loss.backward()
             optimizer.step()
-
+            
             # Track metrics:
             epoch_loss += it_loss.to("cpu").detach().numpy()
             ### end of iteration for epoch ###
 
         epoch_loss /= len(dataset_train)
 
-        #########
         epcs.append(epc)
         training_loss_list.append(epoch_loss)
 
@@ -174,42 +178,50 @@ def train(
         print("Loss for epoch {} is {}".format(epc, epoch_loss))
         writer.add_scalar("Loss/epoch", epoch_loss, epc)
         scores_dictionary = tool4metric.get_scores()
-        writer.add_scalar("IoU class change/epoch",
-                          scores_dictionary["iou_1"], epc)
-        writer.add_scalar("F1 class change/epoch",
-                          scores_dictionary["F1_1"], epc)
-        print(
-            "IoU class change for epoch {} is {}".format(
-                epc, scores_dictionary["iou_1"]
-            )
-        )
-        print(
-            "F1 class change for epoch {} is {}".format(
-                epc, scores_dictionary["F1_1"])
-        )
-        print()
+        writer.add_scalar("IoU class change/epoch", scores_dictionary["iou_1"], epc)
+        writer.add_scalar("F1 class change/epoch", scores_dictionary["F1_1"], epc)
+        
+        print("IoU class change for epoch {} is {}".format(epc, scores_dictionary["iou_1"]))
+        print("F1 class change for epoch {} is {}".format(epc, scores_dictionary["F1_1"]))
         writer.flush()
 
         ### Save the model ###
         if epc % save_after == 0:
-            torch.save(
-                model.state_dict(), os.path.join(logpath, "model_{}.pth".format(epc))
-            )
+            torch.save(model.state_dict(), os.path.join(logpath, "model_{}.pth".format(epc)))
 
     def validation_phase(epc):
         model.eval()
         epoch_loss_eval = 0.0
         tool4metric.clear()
+        
         with torch.no_grad():
-            weight = [0.5, 0.5]
-            for (reference, testimg), (mask_ref, mask_test, mask) in dataset_val:
-                it_change_loss, it_segmentation_loss = evaluate(reference, testimg, mask_ref, mask_test, mask)
-                weight[0] = it_segmentation_loss/(it_change_loss + it_segmentation_loss)
-                weight[1] = 1 - weight[0]
-                it_loss = weight[0] * it_change_loss + weight[1] * it_segmentation_loss
+            for sample  in dataset_val:
+                # Data setting
+                preimg = sample['pre']
+                posimg = sample['pos']
+                staimg = sample['sta']
+                preseg = sample['pregt']
+                posseg = sample['posgt']
+                cd_gt  = sample['cdgt']
+                pre_name = sample['prename']
+                pos_name = sample['posname']
+
+                it_cd_loss, it_seg_loss = evaluate(preimg, posimg, preseg, posseg, cd_gt)
+                
+                it_loss = cdl_weight * it_cd_loss + segl_weight * it_seg_loss
                 epoch_loss_eval += it_loss.to("cpu").numpy()
 
         epoch_loss_eval /= len(dataset_val)
+        
+        if (epc != 0) and (min(validation_loss_list) > epoch_loss_eval):
+            if segl_weight == 0.5:
+                break
+            else:
+                segl_weight   -= 0.05
+                cdl_weight    += 0.05 
+                print('balancing weight for loss has been modified... ')
+                print('segment loss weight  : {} -> {}'.format(segl_weight+0.05, segl_weight))
+                print('cd loss weight       : {} -> {}'.format(cdl_weight-0.05, cdl_weight))
 
         validation_loss_list.append(epoch_loss_eval)
 
@@ -217,20 +229,10 @@ def train(
         print("Loss for epoch {} is {}".format(epc, epoch_loss_eval))
         writer.add_scalar("Loss_val/epoch", epoch_loss_eval, epc)
         scores_dictionary = tool4metric.get_scores()
-        writer.add_scalar("IoU_val class change/epoch",
-                          scores_dictionary["iou_1"], epc)
-        writer.add_scalar("F1_val class change/epoch",
-                          scores_dictionary["F1_1"], epc)
-        print(
-            "IoU class change for epoch {} is {}".format(
-                epc, scores_dictionary["iou_1"]
-            )
-        )
-        print(
-            "F1 class change for epoch {} is {}".format(
-                epc, scores_dictionary["F1_1"])
-        )
-        print()
+        writer.add_scalar("IoU_val class change/epoch", scores_dictionary["iou_1"], epc)
+        writer.add_scalar("F1_val class change/epoch", scores_dictionary["F1_1"], epc)
+        print("IoU class change for epoch {} is {}".format(epc, scores_dictionary["iou_1"]))
+        print("F1 class change for epoch {} is {}".format(epc, scores_dictionary["F1_1"]))
 
     for epc in range(epochs):
         training_phase(epc)

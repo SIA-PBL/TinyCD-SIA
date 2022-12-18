@@ -110,7 +110,7 @@ class LEVIRLoader(Dataset, Sized):
             torch.tensor(x_mask),
         )
 
-
+'''
 class SPN7Loader(Dataset, Sized):
     # SPN7 dataloader
     def __init__(
@@ -353,7 +353,7 @@ class SPN7Loader(Dataset, Sized):
             upsample_object(x_test),
             upsample_object(x_mask),
         )
-
+'''
 class SPN7Loader_256(Dataset, Sized):
     # SPN7 dataloader
     def __init__(

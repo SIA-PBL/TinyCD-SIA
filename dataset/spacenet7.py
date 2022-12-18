@@ -264,11 +264,15 @@ class SPN7Loader(Dataset):
                         'sta': sta_patches,
                         'pregt': preseg,
                         'posgt': posseg,
-                        'cdgt': cd_gt}
+                        'cdgt': cd_gt,
+                        'prename': prename,
+                        'posname': posname}
             else:
                 return {'pre': pre_patches,
                         'pos': pos_patches,
-                        'sta': sta_patches}
+                        'sta': sta_patches,
+                        'prename': sv_pre_name,
+                        'posname': sv_pos_name}
         else:
             if max(np.unique(preseg)) == 255:
                 preseg /= 255

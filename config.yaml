@@ -9,6 +9,9 @@ params:
   weight_decay: 0.01
   time_interval: 1
   patience_limit: 5
+loss:
+  seg_weight: 0.95
+  cd_weight: 0.05
 settings:
   set_seed: True
 data_config:
