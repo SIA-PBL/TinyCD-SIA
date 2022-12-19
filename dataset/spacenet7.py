@@ -186,7 +186,7 @@ class SPN7Loader(Dataset):
             self.num_samples = len(os.listdir(img_dir_path))
 
         self.aug = _augmentation(self.fs, self.phase)
-
+        self.totensor = alb.Compose([ToTensorV2(),])
     def __getitem__(self, idx):
         #### data path setting
         if self.phase != 'inference':
@@ -257,16 +257,14 @@ class SPN7Loader(Dataset):
                     sta_patches.append(sta_p)
             
             if self.phase == 'val':
-                if max(np.unique(preseg)) == 255:
-                    preseg /= 255
-                    posseg /= 255
-
-                gt_total    = [preseg, posseg, cd_gt]
-                tf_gtdata   = self.aug(masks=gt_total)
-                
-                preseg = tf_gtdata['masks'][0]
-                posseg = tf_gtdata['masks'][1]
-                cd_gt = tf_gtdata['masks'][2]
+                preseg = np.asarray(preseg)
+                preseg = self.totensor(image=preseg)
+                preseg = preseg['image']
+                posseg = np.asarray(posseg)
+                posseg = self.totensor(image=posseg)
+                posseg = posseg['image']
+                cd_gt = self.totensor(image=cd_gt)
+                cd_gt = cd_gt['image']
                 
                 return {'pre': pre_patches, 
                         'pos': pos_patches,
@@ -275,8 +273,8 @@ class SPN7Loader(Dataset):
                         'posgt': posseg,
                         'cdgt': cd_gt,
                         'ov_g': ov_guidance,
-                        'prename': prename,
-                        'posname': posname}
+                        'prename': pre_name,
+                        'posname': pos_name}
             else:
                 
                 return {'pre': pre_patches,
@@ -286,7 +284,9 @@ class SPN7Loader(Dataset):
                         'prename': sv_pre_name,
                         'posname': sv_pos_name}
         else:
-            gt_total    = [preseg, posseg, cd_gt] 
+            preseg = np.asarray(preseg)
+            posseg = np.asarray(posseg)
+            gt_total    = (preseg, posseg, cd_gt)
             tf_data     = self.aug(image=data_total, masks=gt_total)
             
             pre_d, pos_d = tf_data['image'][0:3,:,:], tf_data['image'][3:6,:,:]

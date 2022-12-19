@@ -1,4 +1,5 @@
 import os
+import math
 #os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 #os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
@@ -45,12 +46,13 @@ resize_func     = alb.Compose([
 ])
 
 array2tens_func = alb.Compose([
-    ToTensorV2
+    ToTensorV2(),
 ])
     
-
+IMG_SHAPE = cfg['data_config']['train_img_shape']
 P_SIZE = cfg['data_config']['patch_size']
 OV_SIZE = cfg['data_config']['overlap_size']
+
 
 def parse_arguments():
     # Argument Parser creation
@@ -123,13 +125,11 @@ def train(
     epcs                    = []
 
     early_stopping = EarlyStopping(patience=patience_limit, verbose=True)
-    
-    segl_weight = cfg['loss']['seg_weight']
-    cdl_weight  = cfg['loss']['cd_weight']  
-    
-    best_loss = 0.0
 
-    def train_evaluate(preimg, postimg, preseg, postseg, cd_gt):
+    CD_WEIGHT   = cfg['loss']['cd_weight']  
+    SEG_WEIGHT  = cfg['loss']['seg_weight']
+    
+    def train_evaluate(preimg, posimg, preseg, posseg, cd_gt):
         preimg = preimg.to(device).float()
         posimg = posimg.to(device).float()
         preseg = preseg.to(device).float()
@@ -161,11 +161,12 @@ def train(
         preseg = preseg.to(device).float()
         posseg = posseg.to(device).float()
         cd_gt = cd_gt.to(device).float()
-        
-        cd_p_frame      = np.zeros(np.shape(cd_gt))
-        cd_p_r_frame    = np.zeros(np.shape(cd_gt))
-        preseg_frame    = np.zeros(np.shape(preseg))
-        posseg_frame    = np.zeros(np.shape(posseg))
+        ov_guidance = ov_guidance.numpy()
+
+        cd_p_frame      = np.zeros(IMG_SHAPE)
+        cd_p_r_frame    = np.zeros(IMG_SHAPE)
+        preseg_frame    = np.zeros(IMG_SHAPE)
+        posseg_frame    = np.zeros(IMG_SHAPE)
 
         # Evaluating the model:
         for p_idx in range(len(prepatches)):
@@ -185,7 +186,7 @@ def train(
             h_num = int(math.sqrt(len(prepatches)))
             cur_h_idx = int(p_idx/h_num)
             cur_w_idx = int(p_idx%h_num)
-
+            
             cd_p_frame[cur_h_idx * P_SIZE - cur_h_idx * OV_SIZE : (cur_h_idx+1) * P_SIZE - cur_h_idx * OV_SIZE,
                        cur_w_idx * P_SIZE - cur_w_idx * OV_SIZE : (cur_w_idx+1) * P_SIZE - cur_w_idx * OV_SIZE] += cur_cd
             cd_p_r_frame[cur_h_idx * P_SIZE - cur_h_idx * OV_SIZE : (cur_h_idx+1) * P_SIZE - cur_h_idx * OV_SIZE,
@@ -194,22 +195,26 @@ def train(
                          cur_w_idx * P_SIZE - cur_w_idx * OV_SIZE : (cur_w_idx+1) * P_SIZE - cur_w_idx * OV_SIZE] += cur_preseg
             posseg_frame[cur_h_idx * P_SIZE - cur_h_idx * OV_SIZE : (cur_h_idx+1) * P_SIZE - cur_h_idx * OV_SIZE,
                          cur_w_idx * P_SIZE - cur_w_idx * OV_SIZE : (cur_w_idx+1) * P_SIZE - cur_w_idx * OV_SIZE] += cur_posseg
-
-        cd_p_frame /= ov_guidance
+        
+        cd_p_frame = np.squeeze(cd_p_frame // ov_guidance, axis=0)
         cd_p_frame = array2tens_func(image=cd_p_frame)
         cd_p_frame = cd_p_frame['image'].to(device).float()
-        
-        cd_p_r_frame /= ov_guidance
+        cd_p_frame = cd_p_frame.unsqueeze(0)
+
+        cd_p_r_frame = np.squeeze(cd_p_r_frame // ov_guidance, axis=0)
         cd_p_r_frame = array2tens_func(image=cd_p_r_frame)
         cd_p_r_frame = cd_p_r_frame['image'].to(device).float()
-        
-        preseg_frame /= ov_guidance
+        cd_p_r_frame = cd_p_r_frame.unsqueeze(0)
+
+        preseg_frame = np.squeeze(preseg_frame // ov_guidance, axis=0)
         preseg_frame = array2tens_func(image=preseg_frame)
         preseg_frame = preseg_frame['image'].to(device).float()
+        preseg_frame = preseg_frame.unsqueeze(0)
 
-        posseg_frame /= ov_guidance
+        posseg_frame = np.squeeze(posseg_frame // ov_guidance, axis=0)
         posseg_frame = array2tens_func(image=posseg_frame)
         posseg_frame = posseg_frame['image'].to(device).float()
+        posseg_frame = posseg_frame.unsqueeze(0)
 
         # Loss gradient descend step:
         it_cd_loss = criterion(cd_p_frame, cd_gt) + criterion(cd_p_r_frame, cd_gt)
@@ -222,7 +227,10 @@ def train(
 
         return it_cd_loss, it_seg_loss
 
-    def training_phase(epc):
+    def training_phase(epc, CD_W, SEG_W):
+        CD_WEIGHT = CD_W
+        SEG_WEIGHT = SEG_W
+
         tool4metric.clear()
         print("Epoch {}".format(epc))
         
@@ -244,7 +252,7 @@ def train(
             # Loss gradient descend step:
             it_cd_loss, it_seg_loss = train_evaluate(preimg, posimg, preseg, posseg, cd_gt)
             
-            it_loss = cdl_weight * it_cd_loss + segl_weight * it_seg_loss
+            it_loss = CD_WEIGHT * it_cd_loss + SEG_WEIGHT * it_seg_loss
             it_loss.backward()
             optimizer.step()
             
@@ -272,10 +280,13 @@ def train(
         if epc % save_after == 0:
             torch.save(model.state_dict(), os.path.join(logpath, "model_{}.pth".format(epc)))
 
-    def validation_phase(epc):
+    def validation_phase(epc, CD_W, SEG_W):
         model.eval()
         epoch_loss_eval = 0.0
         tool4metric.clear()
+
+        CD_WEIGHT = CD_W
+        SEG_WEIGHT = SEG_W
         
         with torch.no_grad():
             for sample  in dataset_val:
@@ -290,23 +301,22 @@ def train(
                 pos_name = sample['posname']
                 
                 ov_guidance = sample['ov_g']
-
                 it_cd_loss, it_seg_loss = test_evaluate(prepatches, pospatches, preseg, posseg, cd_gt, ov_guidance)
                 
-                it_loss = cdl_weight * it_cd_loss + segl_weight * it_seg_loss
+                it_loss = CD_WEIGHT * it_cd_loss + SEG_WEIGHT * it_seg_loss
                 epoch_loss_eval += it_loss.to("cpu").numpy()
 
         epoch_loss_eval /= len(dataset_val)
         
         if (epc != 0) and (min(validation_loss_list) > epoch_loss_eval):
-            if segl_weight == 0.5:
+            if SEG_WEIGHT == 0.5:
                 pass
             else:
-                segl_weight   -= 0.05
-                cdl_weight    += 0.05 
+                SEG_WEIGHT   -= 0.05
+                CD_WEIGHT    += 0.05 
                 print('balancing weight for loss has been modified... ')
-                print('segment loss weight  : {} -> {}'.format(segl_weight+0.05, segl_weight))
-                print('cd loss weight       : {} -> {}'.format(cdl_weight-0.05, cdl_weight))
+                print('segment loss weight  : {} -> {}'.format(SEG_WEIGHT+0.05, SEG_WEIGHT))
+                print('cd loss weight       : {} -> {}'.format(CD_WEIGHT-0.05, CD_WEIGHT))
 
         validation_loss_list.append(epoch_loss_eval)
 
@@ -318,10 +328,13 @@ def train(
         writer.add_scalar("F1_val class change/epoch", scores_dictionary["F1_1"], epc)
         print("IoU class change for epoch {} is {}".format(epc, scores_dictionary["iou_1"]))
         print("F1 class change for epoch {} is {}".format(epc, scores_dictionary["F1_1"]))
+        
+        return CD_WEIGHT, SEG_WEIGHT
 
     for epc in range(epochs):
-        training_phase(epc)
-        validation_phase(epc)
+        training_phase(epc, CD_WEIGHT, SEG_WEIGHT)
+        CD_WEIGHT, SEG_WEIGHT = validation_phase(epc, CD_WEIGHT, SEG_WEIGHT)
+        print('cd w : ', CD_WEIGHT)
         early_stopping(validation_loss_list[-1], model)
         if early_stopping.early_stop:
             print("Early stopping")
