@@ -1,6 +1,8 @@
 from typing import List, Tuple
 from collections import Sized
 import os
+import glob
+import random
 from os.path import join
 import albumentations as alb
 from albumentations.pytorch import ToTensorV2
@@ -24,11 +26,11 @@ def load_config(config_file):
 
 cfg = load_config("./config.yaml")
 
-def seg2patches(img, data_config=cfg.data_config):
+def seg2patches(img, data_config=cfg['data_config']):
     dc      = data_config
-    h, w    = dc.val_img_shape
-    p_size  = dc.patch_size
-    ov_size = dc.overlap_size
+    h, w    = dc['val_img_shape']
+    p_size  = dc['patch_size']
+    ov_size = dc['overlap_size']
 
     mask    = np.zeros((h, w))
     patches = []
@@ -84,7 +86,7 @@ def seg2patches(img, data_config=cfg.data_config):
             patches.append(patch)
     return patches, mask
 
-def _augmentation(full_scene=True, mode='train', data_config=cfg.data_config):
+def _augmentation(full_scene=True, mode='train', data_config=cfg['data_config']):
     dc = data_config
     pr = 0.5
     if full_scene is True:
@@ -93,30 +95,30 @@ def _augmentation(full_scene=True, mode='train', data_config=cfg.data_config):
                 alb.HorizontalFlip(p=pr),
                 alb.VerticalFlip(p=pr),
                 alb.RandomRotate90(p=pr),
-                alb.Normalize(mean=dc.mean, std=dc.std),
+                alb.Normalize(mean=dc['mean'], std=dc['std']),
                 ToTensorV2(),
                 ])
             #elif mode == 'val':
         else:
             aug = alb.Compose([
-                alb.Normalize(mean=dc.mean, std=dc.std),
+                alb.Normalize(mean=dc['mean'], std=dc['std']),
                 ToTensorV2(),
                 ])
     else:
         if mode == 'train':
             aug = alb.Compose([
-                alb.RandomCrop(dc.patch_size, dc.patch_size),
-                alb.Resize(dc.path_size * dc.resize_scale, dc.patch_size * dc.resize_scale),
+                alb.RandomCrop(dc['patch_size'], dc['patch_size']),
+                alb.Resize(dc['patch_size'] * dc['resize_scale'], dc['patch_size'] * dc['resize_scale']),
                 alb.HorizontalFlip(p=pr),
                 alb.VerticalFlip(p=pr),
                 alb.RandomRotate90(p=pr),
-                alb.Normalize(mean=dc.mean, std=dc.std),
+                alb.Normalize(mean=dc['mean'], std=dc['std']),
                 ToTensorV2(),
                 ])
             #elif mode == 'val':
         else:
             aug = alb.Compose([
-                alb.Normalize(mean=dc.mean, std=dc.std),
+                alb.Normalize(mean=dc['mean'], std=dc['std']),
                 ToTensorV2(),
                 ])
 
@@ -126,52 +128,57 @@ def load_data(pre_path=None,
               pos_path=None,
               stat_path=None,
               phase='train',
-              data_config=cfg.data_config):
+              data_config=cfg['data_config']):
     dc = data_config
-    preimg = Image.open(pre_path).resize(dc.train_img_shape)
-    posimg = Image.open(pos_path).resize(dc.train_img_shape)
+    img_shape = dc['train_img_shape']
+    preimg = Image.open(pre_path).resize(img_shape)
+    posimg = Image.open(pos_path).resize(img_shape)
 
     if phase == 'inference':
         statimg = None
         if stat_path is not None:
-            statimg = Image.open(stat_path).resize(dc.train_img_shape)
+            statimg = Image.open(stat_path).resize(dc['train_img_shape'])
         return preimg, posimg, statimg
     
     else:
         preseg_path = pre_path.replace('images', 'labels').split('.p')[0]+'_Buildings.png'
         posseg_path = pos_path.replace('images', 'labels').split('.p')[0]+'_Buildings.png'
         
-        preseg = Image.open(preseg_path).convert('L').resize(dc.train_img_shape)
-        posseg = Image.open(posseg_path).convert('L').resize(dc.train_img_shape)
+        preseg = Image.open(preseg_path).convert('L').resize(dc['train_img_shape'])
+        posseg = Image.open(posseg_path).convert('L').resize(dc['train_img_shape'])
+        
+        if max(np.unique(preseg)) == 255:
+            preseg = np.asarray(preseg)
+            posseg = np.asarray(posseg)
+            preseg = preseg // 255.0
+            posseg = posseg // 255.0
 
         cd_gt = np.logical_xor(preseg, posseg)
         cd_gt = cd_gt.astype(np.uint8)
         
         statimg = None
         if stat_path is not None:
-            statimg = Image.open(stat_path).resize(dc.train_img_shape)
+            statimg = Image.open(stat_path).resize(dc['train_img_shape'])
         
         return preimg, posimg, preseg, posseg, cd_gt, statimg
 
-
 class SPN7Loader(Dataset):
     def __init__(self,
-            dat_path,
+            data_path,
             phase,
             full_scene=True,
-            data_config=cfg.data_config):
+            data_config=cfg['data_config']):
 
         self.fs     = full_scene
         self.phase  = phase
         self.dc     = data_config
         self.root   = data_path
-
         self.img_dir_path   = os.path.join(self.root, self.phase, "images")
         self.label_dir_path = os.path.join(self.root, self.phase, "labels")
 
         self.subimg_dirlist = os.listdir(self.img_dir_path)
 
-        if self.phase is not 'inference':
+        if self.phase != 'inference':
             self.subgt_dirlist = os.listdir(self.label_dir_path)
             self.num_samples = len(glob.glob(os.path.join(self.img_dir_path, '**/*.png'), recursive=True))
 
@@ -201,7 +208,7 @@ class SPN7Loader(Dataset):
             sv_pos_name = 'Planet_20220409_' + self.subimg_dirlist[idx]
         
         stat_path = None
-        if self.dc.transductive is True:
+        if self.dc['transductive'] is True:
             stat_path = img_root + '/std_edamap.png'
         
         #### data load
@@ -229,7 +236,9 @@ class SPN7Loader(Dataset):
         #### inference mode patch processing
         if self.phase != 'train':
             patches, ov_guidance = seg2patches(data_total)
-
+        
+        #### Garbage value settings for dataloading
+        sta_patches = np.zeros((1,1,1))
         #### data augmentation and wrap it to tensor and return
         if self.phase != 'train':
             pre_patches = []
@@ -243,7 +252,7 @@ class SPN7Loader(Dataset):
                 pre_patches.append(pre_p)
                 pos_patches.append(pos_p)
                 
-                if statimg is not None:
+                if self.dc['transductive'] is True:
                     sta_p = tf_data['image'][6:9,:,:]
                     sta_patches.append(sta_p)
             
@@ -265,26 +274,26 @@ class SPN7Loader(Dataset):
                         'pregt': preseg,
                         'posgt': posseg,
                         'cdgt': cd_gt,
+                        'ov_g': ov_guidance,
                         'prename': prename,
                         'posname': posname}
             else:
+                
                 return {'pre': pre_patches,
                         'pos': pos_patches,
                         'sta': sta_patches,
+                        'ov_g': ov_guidance,
                         'prename': sv_pre_name,
                         'posname': sv_pos_name}
         else:
-            if max(np.unique(preseg)) == 255:
-                preseg /= 255
-                posseg /= 255
-
             gt_total    = [preseg, posseg, cd_gt] 
             tf_data     = self.aug(image=data_total, masks=gt_total)
             
             pre_d, pos_d = tf_data['image'][0:3,:,:], tf_data['image'][3:6,:,:]
             preseg, posseg, cd_gt = tf_data['masks'][0], tf_data['masks'][1], tf_data['masks'][2]
-            sta_d = None
-            if statimg is not None:
+            
+            sta_d = np.zeros((1,1,1))
+            if self.dc['transductive'] is True:
                 sta_d = tf_data['image'][6:9,:,:]
 
             return {'pre': pre_d, 

@@ -1,10 +1,10 @@
 paths:
-  datapath: dataset/LEVIR-CD-256
-  logpath: dataset/results/LEVIR-CD
+  datapath: ../../Datasets/spacenet7
+  logpath: logs/
 params:
   epochs: 100
   epoch_loss: 0.0
-  batch_size: 1
+  batch_size: 4
   lr: 0.0005
   weight_decay: 0.01
   time_interval: 1
@@ -15,11 +15,11 @@ loss:
 settings:
   set_seed: True
 data_config:
-  mean: (0.485, 0.456, 0.406, 0.485, 0.456, 0.406) #if transductive trud (0.485, 0.456, 0.406, 0.485, 0.456, 0.406, 0.485, 0.456, 0.406)
-  std: (0.229, 0.224, 0.225, 0.229, 0.224, 0.225)
+  mean: [0.485, 0.456, 0.406, 0.485, 0.456, 0.406] #if transductive trud (0.485, 0.456, 0.406, 0.485, 0.456, 0.406, 0.485, 0.456, 0.406)
+  std: [0.229, 0.224, 0.225, 0.229, 0.224, 0.225]
   patch_size: 256
   resize_scale: 4
   transductive: False,
-  train_img_shape: (1024,1024)
-  val_img_shape: (1024,1024)
+  train_img_shape: [1024,1024]
+  val_img_shape: [1024,1024]
   overlap_size: 128
