@@ -182,11 +182,16 @@ class SPN7Loader(Dataset, Sized):
         x_mask_ref = Image.open(list_labels_1[indx]).convert('L')
         x_mask_test = Image.open(list_labels_2[indx]).convert('L')
 
-        # Resize the size to 1024_1024 (Size of some images is not 1024*1024)
-        x_ref = np.resize(x_ref, (1024, 1024, 3))
-        x_test = np.resize(x_test, (1024, 1024, 3))
-        x_mask_ref = np.resize(x_mask_ref, (1024, 1024))
-        x_mask_test = np.resize(x_mask_test, (1024, 1024))
+
+        x_ref = x_ref.resize((1024, 1024), Image.NEAREST)
+        x_test = x_ref.resize((1024, 1024), Image.NEAREST)
+        x_mask_ref = x_mask_ref.resize((1024, 1024), Image.NEAREST)
+        x_mask_test = x_mask_test.resize((1024, 1024), Image.NEAREST)
+
+        x_ref = np.array(x_ref)
+        x_test = np.array(x_test)
+        x_mask_ref = np.array(x_mask_ref)
+        x_mask_test = np.array(x_mask_test)
 
         # Convenrt datatypes
         x_ref = x_ref.astype(np.float32)
@@ -232,12 +237,12 @@ class SPN7Loader(Dataset, Sized):
         x_ref, x_test, x_mask = self._to_ndarrays(
             x_ref, x_test, x_mask
         )
-        '''
+
         # Data augmentation in case of training:
         if self._mode == "train":
             x_ref, x_test, x_mask_ref, x_mask_test, x_mask = self._augment(
                 x_ref, x_test, x_mask_ref, x_mask_test, x_mask)
-
+        '''
         # Trasform data from HWC to CWH:
         x_ref, x_test, x_mask_ref, x_mask_test, x_mask = self._to_tensors_with_normalization(
             x_ref, x_test, x_mask_ref, x_mask_test, x_mask)        

@@ -5,9 +5,9 @@ params:
   epochs: 100
   epoch_loss: 0.0
   batch_size: 1
-  lr: 0.0005
+  lr: 0.0001
   weight_decay: 0.01
-  time_interval: 1
+  time_interval: 9
   patience_limit: 5
 settings:
   set_seed: True

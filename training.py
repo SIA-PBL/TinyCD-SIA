@@ -1,6 +1,4 @@
 import os
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # clear cache
 os.system('python clear_cache.py')
@@ -33,8 +31,8 @@ def load_config(config_file):
 cfg = load_config("config.yaml")
 
 loader_dict = {
-    # 'MyLoader': dataset.SPN7Loader
-    'MyLoader': dataset.SPN7Loader_256
+    'MyLoader': dataset.SPN7Loader
+    #'MyLoader': dataset.SPN7Loader_256
 }
 
 
